@@ -6,7 +6,7 @@ all:clean proxy
 clean:	
 	- rm -f *.o  proxy report.tasks 
 
-COMMON =  -I/lib/buffer.c -I/lib/logger.c
+COMMON =  -I/utils/buffer.c -I/utils/logger.c -I/utils/selector.c
 
 proxy:      
 	$(COMPILER) $(CFLAGS) -o proxy proxy.c $(COMMON)
