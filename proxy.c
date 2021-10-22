@@ -9,7 +9,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/time.h>
-#include "logger.h"
+#include "./utils/include/logger.h"
+#include "./include/proxy.h"
 
 #define max(n1, n2) ((n1) > (n2) ? (n1) : (n2))
 
