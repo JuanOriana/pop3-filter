@@ -8,5 +8,5 @@ clean:
 
 COMMON =  -I/lib/buffer.c -I/lib/logger.c
 
-server:      
+proxy:      
 	$(COMPILER) $(CFLAGS) -o proxy proxy.c $(COMMON)
