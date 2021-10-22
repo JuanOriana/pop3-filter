@@ -15,7 +15,8 @@
 
 #define TRUE 1
 #define FALSE 0
-#define PORT 8888
+#define DEFAULT_SERVER_PORT 8888
+#define DEFAULT_ORIGIN_PORT 110
 #define MAX_SOCKETS 30
 #define BUFFSIZE 1024
 #define MAX_PENDING_CONNECTIONS 3 // un valor bajo, para realizar pruebas
@@ -29,9 +30,21 @@ enum IP_TYPE
 int main(int argc, char *argv[])
 {
     int socket_to_client;
-    int new_socket, client_socket[MAX_SOCKETS], max_clients = MAX_SOCKETS, activity, i, sd;
+    int new_socket, client_socket[MAX_SOCKETS], max_clients = MAX_SOCKETS, activity, i, sd, origin_port, origin_addr;
     long valread;
     int max_sd;
+
+    if (argc < 3)
+    {
+        log(FATAL, "Parameters invalid");
+        return -1;
+    }
+
+    origin_addr = argv[2];
+    origin_port = atoi(argv[1]);
+
+    printf(origin_addr);
+    printf("%d", origin_port);
 
     struct sockaddr_storage client_address; // Client address
     socklen_t client_address_len = sizeof(client_address);
@@ -47,8 +60,6 @@ int main(int argc, char *argv[])
 
     // y tambien los flags para writes
     fd_set writefds;
-
-    // TODO adaptar setupTCPServerSocket para que cree socket para IPv4 e IPv6 y ademas soporte opciones (y asi no repetor codigo)
 
     // socket para IPv4 y para IPv6 (si estan disponibles)
     ///////////////////////////////////////////////////////////// IPv4
@@ -81,7 +92,7 @@ int buildSocketForClient(enum IP_TYPE ip_type)
         memset(&address, 0, sizeof(address));
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = INADDR_ANY;
-        address.sin_port = htons(PORT);
+        address.sin_port = htons(DEFAULT_SERVER_PORT);
         if (bind(client_socket, (struct sockaddr *)&address, sizeof(address)) < 0)
         {
             log(ERROR, "bind failed");
@@ -93,7 +104,7 @@ int buildSocketForClient(enum IP_TYPE ip_type)
     {
         memset(&address_6, 0, sizeof(address_6));
         address_6.sin6_family = AF_INET6;
-        address_6.sin6_port = htons(PORT);
+        address_6.sin6_port = htons(DEFAULT_SERVER_PORT);
         address_6.sin6_addr = in6addr_any;
         if (bind(client_socket, (struct sockaddr *)&address_6, sizeof(address_6)) < 0)
         {
