@@ -14,6 +14,8 @@
 #include "./utils/include/buffer.h"
 #include "./utils/include/selector.h"
 #include <sys/signal.h>
+#include "./utils/include/stm.h"
+#include "./include/proxy.h"
 
 #define max(n1, n2) ((n1) > (n2) ? (n1) : (n2))
 
@@ -42,17 +44,14 @@ typedef enum
 } proxy_state;
 
 typedef struct state_definition state_definition;
-struct state_definition
-{
-    proxy_state state;
-    const fd_handler handler;
-};
 
 struct connection
 {
     int fd_client;
     int fd_origin;
-    state_definition *state_definition;
+  
+    struct state_machine stm;
+
     buffer client_buffer;
     buffer origin_buffer;
 };
@@ -75,47 +74,40 @@ static const struct fd_handler proxy_handler = {
     .handle_block  = proxy_block,
 };
 
-struct state_definition client_states[] = {
+int proxy_create_connection(struct selector_key *key);
+int build_passive(IP_TYPE ip_type);
+
+static const struct state_definition client_states[] = {
     {
         .state = RESOLVING,
-        .handler.handle_read = NULL,
-        .handler.handle_write = NULL,
-        .handler.handle_close = NULL,
+        .on_arrival = NULL,
+        .on_block_ready= NULL,
+        .on_departure = NULL,
+        .on_read_ready = NULL,
+        .on_write_ready = NULL,
     },
     {
         .state = CONNECTING,
-        .handler.handle_read = NULL,
-        .handler.handle_write = NULL,
-        .handler.handle_close = NULL,
+        .on_arrival = NULL,
+        .on_block_ready= NULL,
+        .on_departure = NULL,
+        .on_read_ready = NULL,
+        .on_write_ready = NULL,
     },
     {
         .state = COPYING,
-        .handler.handle_read = NULL,
-        .handler.handle_write = NULL,
-        .handler.handle_close = NULL,
+        .on_arrival = NULL,
+        .on_block_ready= NULL,
+        .on_departure = NULL,
+        .on_read_ready = NULL,
+        .on_write_ready = NULL,
     }};
 
-int proxy_create_connection(struct selector_key *key);
-int build_passive(IP_TYPE ip_type);
+
 
 int main(int argc, char *argv[])
 {
     unsigned port = DEFAULT_SERVER_PORT;
-    // if(argc == 2) {
-    //     // utilizamos el default
-    // } else if(argc == 3) {
-    //     char *end     = 0;
-    //     const long sl = strtol(argv[1], &end, 10);
-
-    //     if (end == argv[2]|| '\0' != *end
-    //        || ((LONG_MIN == sl || LONG_MAX == sl) && ERANGE == errno)
-    //        || sl < 0 || sl > USHRT_MAX) {
-    //         logger(FATAL, "port should be an integer: %s\n", argv[1]);
-    //     }
-    //     port = sl;
-    // } else {
-    //     logger(FATAL, "Usage: %s <addr> <port>\n", argv[0]);
-    // }
 
     close(0); // Add an  extra FD to server
 
@@ -157,7 +149,6 @@ int main(int argc, char *argv[])
         goto selector_finally;
     }
 
-    // TODO: Borrar este handler por proxy_handler
     const struct fd_handler passive_handler = {
         .handle_read = proxy_create_connection, 
         .handle_write = NULL,
@@ -292,7 +283,6 @@ int proxy_create_connection(struct selector_key *key)
     }
 
    
-
     // TODO: Borrar este handler por proxy_handler
     const struct fd_handler active_handler = {
         .handle_read = NULL, 
@@ -314,11 +304,39 @@ int proxy_create_connection(struct selector_key *key)
 }
 
 
+struct connection getNewConnection(int client_fd,int origin_fd){
+   struct state_machine stm = {
+        .initial = CONNECTING,     // TODO: remplazar por RESOLVING cuando lo tengamos
+        .max_state = DONE,
+        .states = client_states,
+    };
 
+    stm_init(&stm); 
+
+    struct buffer client_buf;
+    uint8_t direct_buff[6]; // TODO: Hacer este numero un CTE
+    buffer_init(&client_buf, N(direct_buff), direct_buff);
+
+     struct buffer origin_buf;
+    uint8_t direct_buff_origin[6]; // TODO: Hacer este numero un CTE
+    buffer_init(&origin_buf, N(origin_buf), direct_buff_origin);
+    
+    struct connection  new_connection ={
+        .fd_client = client_fd,
+        .stm = stm,
+        .fd_origin = origin_fd,
+        .client_buffer = client_buf,
+        .origin_buffer = origin_buf,
+    };
+
+
+    return new_connection;
+}
 
 
 static void
 proxy_read(struct selector_key *key) {
+    printf("Llego al read  con fd %d y data %s",key->fd,(char*)key->data);
     // struct state_machine *stm   = &ATTACHMENT(key)->stm;
     // const enum socks_v5state st = stm_handler_read(stm, key);
 

@@ -10,7 +10,7 @@ clean:
 	cd utils; make clean
 	- rm -f *.o  proxy report.tasks 
 
-COMMON =  ./utils/buffer.c ./utils/logger.c ./utils/selector.c
+COMMON =  ./utils/buffer.c ./utils/logger.c ./utils/selector.c ./utils/stm.c
 
 proxy:      
 	$(COMPILER) $(CFLAGS) -o proxy proxy.c $(COMMON)
