@@ -1,7 +1,7 @@
 COMPILER=gcc
-CFLAGS = -Wall -fsanitize=address -g
+CFLAGS = -Wall -fsanitize=address -g -lpthread
 
-all: clean proxy utils
+all: clean utils proxy
 
 utils:
 	cd utils; make all
@@ -10,10 +10,11 @@ clean:
 	cd utils; make clean
 	- rm -f *.o  proxy report.tasks 
 
-COMMON =  -I/utils/buffer.c -I/utils/logger.c -I/utils/selector.c
+COMMON =  ./utils/buffer.c ./utils/logger.c ./utils/selector.c
 
 proxy:      
 	$(COMPILER) $(CFLAGS) -o proxy proxy.c $(COMMON)
+
 
 
 .PHONY=all clean
