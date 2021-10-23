@@ -1,7 +1,7 @@
 COMPILER=gcc
 CFLAGS   = -Wall -fsanitize=address -g -I./include 
 LINKER 	 = clang
-LFLAGS 	 = -Wall -fsanitize=address -g
+LFLAGS 	 = -Wall -fsanitize=address -g -lpthread
 
 SOURCES := $(wildcard *.c)
 OBJECTS := $(SOURCES:.c=.o)
