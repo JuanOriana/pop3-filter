@@ -93,8 +93,9 @@ struct state_definition client_states[] = {
         .handler.handle_close = NULL,
     }};
 
-int proxy_create_connection(struct selector_key *key);
-int build_passive(IP_TYPE ip_type);
+static int proxy_create_connection(struct selector_key *key);
+static int proxy_connect_to_origin();
+static int build_passive(IP_TYPE ip_type);
 
 const char *err_msg = NULL;
 struct pop3_proxy_args pop3_proxy_args;
@@ -200,7 +201,7 @@ selector_finally:
     return ret;
 }
 
-int build_passive(IP_TYPE ip_type)
+static int build_passive(IP_TYPE ip_type)
 {
     int opt = TRUE;
     int client_socket;
@@ -210,14 +211,14 @@ int build_passive(IP_TYPE ip_type)
 
     if ((client_socket = socket(net_flag, SOCK_STREAM, 0)) < 0) // Puede ser 0 por que cerramos el fd 0 para el proxy asi ganamos ud fd mas
     {
-        log(ERROR, "socket failed");
+        log(ERROR, "Passive: Socket failed");
         return -1;
     }
 
     // set master socket to allow multiple connections , this is just a good habit, it will work without this
     if (setsockopt(client_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0)
     {
-        log(ERROR, "set socket options failed");
+        log(ERROR, "Passive: set socket options failed");
     }
 
     if (ip_type == IPV4)
@@ -229,7 +230,7 @@ int build_passive(IP_TYPE ip_type)
         address.sin_port = htons(pop3_proxy_args.pop3_proxy_port);
         if (bind(client_socket, (struct sockaddr *)&address, sizeof(address)) < 0)
         {
-            log(ERROR, "bind failed");
+            log(ERROR, "Passive: bind failed");
             close(client_socket);
             return -1;
         }
@@ -243,7 +244,7 @@ int build_passive(IP_TYPE ip_type)
         if (bind(client_socket, (struct sockaddr *)&address_6, sizeof(address_6)) < 0)
         {
 
-            log(ERROR, "bind failed");
+            log(ERROR, "Passive: bind failed");
             close(client_socket);
             return -1;
         }
@@ -251,7 +252,7 @@ int build_passive(IP_TYPE ip_type)
 
     if (listen(client_socket, MAX_PENDING_CONNECTIONS) < 0)
     {
-        log(ERROR, "listen socket failed");
+        log(ERROR, "Passive: listen socket failed");
         close(client_socket);
         return -1;
     }
@@ -262,11 +263,18 @@ int build_passive(IP_TYPE ip_type)
     return client_socket;
 }
 
-int proxy_create_connection(struct selector_key *key)
+static int proxy_create_connection(struct selector_key *key)
 {
     struct sockaddr_storage client_address; // Client address
     // Set length of client address structure (in-out parameter)
     socklen_t client_address_len = sizeof(client_address);
+
+    int origin_socket = proxy_connect_to_origin();
+    if (origin_socket < 0)
+    {
+        log(FATAL, "Origin connection failed completely");
+        return -1;
+    }
 
     // Wait for a client to connect
     int client_socket = accept(key->fd, (struct sockaddr *)&client_address, &client_address_len); // TODO : Setear flag de no bloqueante
@@ -333,4 +341,41 @@ static void
 proxy_close(struct selector_key *key)
 {
     // socks5_destroy(ATTACHMENT(key));
+}
+
+static int
+proxy_connect_to_origin()
+{
+    int origin_socket = -1, opt;
+    struct sockaddr_in origin_addr;
+    if ((origin_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+        log(ERROR, "Origin: Socket failed");
+        return -1;
+    }
+    // set master socket to allow multiple connections , this is just a good habit, it will work without this
+    if (setsockopt(origin_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0)
+    {
+        log(ERROR, "Origin: set socket options failed");
+        return -1;
+    }
+
+    origin_addr.sin_family = AF_INET;
+    origin_addr.sin_port = htons(pop3_proxy_args.origin_port);
+
+    // Convert IPv4 and IPv6 addresses from text to binary form
+    if (inet_pton(AF_INET, "127.0.0.1", &origin_addr.sin_addr) <= 0)
+    {
+        log(ERROR, "Origin: Invalid address/ Address not supported \n");
+        return -1;
+    }
+
+    if (connect(origin_socket, (struct sockaddr *)&origin_addr, sizeof(origin_addr)) < 0)
+    {
+        log(ERROR, "Origin: Connection failed \n");
+        return -1;
+    }
+
+    log(INFO, "origin: %d", origin_socket);
+    return origin_socket;
 }

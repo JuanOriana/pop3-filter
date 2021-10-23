@@ -13,7 +13,7 @@ clean:
 COMMON =  ./utils/buffer.c ./utils/logger.c ./utils/selector.c
 
 proxy:      
-	$(COMPILER) $(CFLAGS) -o proxy proxy.c $(COMMON)
+	$(COMPILER) $(CFLAGS) -o proxy proxy.c args.c $(COMMON)
 
 
 
