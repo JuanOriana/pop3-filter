@@ -1,5 +1,5 @@
 COMPILER=gcc
-CFLAGS = -Wall -fsanitize=address -g -lpthread
+CFLAGS = -Wall -fsanitize=address -g -lpthread -pthread
 
 all: clean utils proxy
 
