@@ -57,6 +57,24 @@ struct connection
     buffer origin_buffer;
 };
 
+/** obtiene el struct (socks5 *) desde la llave de selección  */
+#define ATTACHMENT(key) ( (struct connection *)(key)->data)
+
+/* declaración forward de los handlers de selección de una conexión
+ * establecida entre un cliente y el proxy.
+ */
+
+static void proxy_read   (struct selector_key *key);
+static void proxy_write  (struct selector_key *key);
+static void proxy_block  (struct selector_key *key);
+static void proxy_close  (struct selector_key *key);
+static const struct fd_handler proxy_handler = {
+    .handle_read   = proxy_read,
+    .handle_write  = proxy_write,
+    .handle_close  = proxy_close,
+    .handle_block  = proxy_block,
+};
+
 struct state_definition client_states[] = {
     {
         .state = RESOLVING,
@@ -109,7 +127,7 @@ int main(int argc, char *argv[])
     const int server = build_passive(ip_type);
     if (server < 0)
     {
-        // logger(FATAL, "Unable to establish connection");
+        log(FATAL, "Unable to establish connection");
     }
 
     if (selector_fd_set_nio(server) == -1)
@@ -139,8 +157,9 @@ int main(int argc, char *argv[])
         goto selector_finally;
     }
 
+    // TODO: Borrar este handler por proxy_handler
     const struct fd_handler passive_handler = {
-        .handle_read = proxy_create_connection, // TODO: crear conexion activa y subscribirla al selector
+        .handle_read = proxy_create_connection, 
         .handle_write = NULL,
         .handle_close = NULL, // nada que liberar
     };
@@ -207,14 +226,14 @@ int build_passive(IP_TYPE ip_type)
 
     if ((client_socket = socket(net_flag, SOCK_STREAM, 0)) < 0)  // Puede ser 0 por que cerramos el fd 0 para el proxy asi ganamos ud fd mas
     {
-        // log(ERROR, "socket failed");
+        log(ERROR, "socket failed");
         return -1;
     }
 
     // set master socket to allow multiple connections , this is just a good habit, it will work without this
     if (setsockopt(client_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0)
     {
-        // log(ERROR, "set socket options failed");
+        log(ERROR, "set socket options failed");
     }
 
     if (ip_type == IPV4)
@@ -225,7 +244,7 @@ int build_passive(IP_TYPE ip_type)
         address.sin_port = htons(DEFAULT_SERVER_PORT);
         if (bind(client_socket, (struct sockaddr *)&address, sizeof(address)) < 0)  
         {
-           // log(ERROR, "bind failed");
+            log(ERROR, "bind failed");
             close(client_socket);
             return -1;
         }
@@ -239,7 +258,7 @@ int build_passive(IP_TYPE ip_type)
         if (bind(client_socket, (struct sockaddr *)&address_6, sizeof(address_6)) < 0)
         {
 
-            // log(ERROR, "bind failed");
+            log(ERROR, "bind failed");
             close(client_socket);
             return -1;
         }
@@ -247,13 +266,13 @@ int build_passive(IP_TYPE ip_type)
 
     if (listen(client_socket, MAX_PENDING_CONNECTIONS) < 0)
     {
-        // log(ERROR, "listen socket failed");
+        log(ERROR, "listen socket failed");
         close(client_socket);
         return -1;
     }
     else
     {
-        // log(DEBUG, "Waiting for TCP connections on socket %d\n", client_socket);
+        log(DEBUG, "Waiting for TCP connections on socket %d\n", client_socket);
     }
     return client_socket;
 }
@@ -268,23 +287,67 @@ int proxy_create_connection(struct selector_key *key)
     int client_socket = accept(key->fd, (struct sockaddr *)&client_address, &client_address_len);  // TODO : Setear flag de no bloqueante
     if (client_socket < 0)
     {
-        
-        // TODO : Logger error
+        log(ERROR,"Cant accept client connection");
         return -1;
     }
 
-    // client_socket is connected to a client!
-    // log(INFO, "Handling client %s", addrBuffer);
+   
 
-    // TODO: CREAR HANDLER
+    // TODO: Borrar este handler por proxy_handler
+    const struct fd_handler active_handler = {
+        .handle_read = NULL, 
+        .handle_write = NULL,
+        .handle_close = NULL, // nada que liberar
+    };
     selector_status ss = SELECTOR_SUCCESS;
-    ss = selector_register(key->s, client_socket, NULL, OP_NOOP, NULL); // Third parameter is null since non-handling is needed
+    ss = selector_register(key->s, client_socket, &active_handler, OP_NOOP, NULL); 
     if(ss != SELECTOR_SUCCESS)
     {
+        log(ERROR,"Selector error register %s ",selector_error(ss));
         //TODO
     }
    
+    log(INFO, "Connection accepted");
     // Falta crear socket entre proxy y servidor origen. Y registrarlo para escritura.
     
     return client_socket;
+}
+
+
+
+
+
+static void
+proxy_read(struct selector_key *key) {
+    // struct state_machine *stm   = &ATTACHMENT(key)->stm;
+    // const enum socks_v5state st = stm_handler_read(stm, key);
+
+    // if(ERROR == st || DONE == st) {
+    //     socksv5_done(key);
+    // }
+}
+
+static void
+proxy_write(struct selector_key *key) {
+    // struct state_machine *stm   = &ATTACHMENT(key)->stm;
+    // const enum socks_v5state st = stm_handler_write(stm, key);
+
+    // if(ERROR == st || DONE == st) {
+    //     socksv5_done(key);
+    // }
+}
+
+static void
+proxy_block(struct selector_key *key) {
+    // struct state_machine *stm   = &ATTACHMENT(key)->stm;
+    // const enum socks_v5state st = stm_handler_block(stm, key);
+
+    // if(ERROR == st || DONE == st) {
+    //     socksv5_done(key);
+    // }
+}
+
+static void
+proxy_close(struct selector_key *key) {
+    // socks5_destroy(ATTACHMENT(key));
 }
