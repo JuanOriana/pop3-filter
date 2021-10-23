@@ -4,8 +4,7 @@
 #include <string.h> /* memset */
 #include <errno.h>
 #include <getopt.h>
-
-#include "args.h"
+#include "./include/args.h"
 
 static unsigned short
 port(const char *s)
@@ -57,15 +56,12 @@ void parse_args(const int argc, char **argv, struct pop3_proxy_args *args)
 {
     memset(args, 0, sizeof(*args));
 
-    args->error_file = "/dev/null";
-
-    args->pop3_proxy_addr = "0.0.0.0";
-    args->pop3_proxy_port = 1110;
-
-    args->mng_addr = "127.0.0.1";
-    args->mng_port = 9090;
-
-    args->origin_port = 110;
+    args->error_file = DEFAULT_ERROR_FILE;
+    args->pop3_proxy_addr = DEFAULT_PROXY_ADDR;
+    args->pop3_proxy_port = DEFAULT_PROXY_PORT;
+    args->mng_addr = DEFAULT_MNG_ADDR;
+    args->mng_port = DEFAULT_MNG_PORT;
+    args->origin_port = DEFAULT_ORIGIN_PORT;
 
     int c;
 

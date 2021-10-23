@@ -3,6 +3,13 @@
 
 #include <stdbool.h>
 
+#define DEFAULT_ERROR_FILE "/dev/null"
+#define DEFAULT_ORIGIN_PORT 110
+#define DEFAULT_PROXY_ADDR "0.0.0.0"
+#define DEFAULT_PROXY_PORT 1110
+#define DEFAULT_MNG_ADDR "127.0.0.1"
+#define DEFAULT_MNG_PORT 9090
+
 struct pop3_proxy_args
 {
     char *pop3_proxy_addr;

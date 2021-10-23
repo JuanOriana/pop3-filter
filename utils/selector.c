@@ -15,6 +15,8 @@
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <sys/signal.h>
+#include <signal.h>
+
 #include "./include/selector.h"
 
 #define N(x) (sizeof(x) / sizeof((x)[0]))
@@ -671,14 +673,14 @@ int selector_fd_set_nio(const int fd)
     int flags = fcntl(fd, F_GETFD, 0);
     if (flags == -1)
     {
-         printf("error flags ");
+        printf("error flags ");
         ret = -1;
     }
     else
     {
         if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
         {
-             printf("error fcntl socket");
+            printf("error fcntl socket");
             ret = -1;
         }
     }
