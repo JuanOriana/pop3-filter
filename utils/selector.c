@@ -686,3 +686,21 @@ int selector_fd_set_nio(const int fd)
     }
     return ret;
 }
+
+int set_non_blocking(const int fd)
+{
+    int ret = 0;
+    int flags = fcntl(fd, F_GETFD, 0);
+    if (flags == -1)
+    {
+        ret = -1;
+    }
+    else
+    {
+        if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
+        {
+            ret = -1;
+        }
+    }
+    return ret;
+}
