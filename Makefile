@@ -1,5 +1,5 @@
 COMPILER=gcc
-CFLAGS = -Wall -fsanitize=address -g -lpthread
+CFLAGS = -Wall -fsanitize=address -g -lpthread -pthread
 
 all: clean utils proxy
 
@@ -13,7 +13,7 @@ clean:
 COMMON =  ./utils/buffer.c ./utils/logger.c ./utils/selector.c
 
 proxy:      
-	$(COMPILER) $(CFLAGS) -o proxy proxy.c $(COMMON)
+	$(COMPILER) $(CFLAGS) -o proxy proxy.c args.c $(COMMON)
 
 
 
