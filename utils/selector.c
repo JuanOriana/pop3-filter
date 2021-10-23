@@ -671,14 +671,14 @@ int selector_fd_set_nio(const int fd)
     int flags = fcntl(fd, F_GETFD, 0);
     if (flags == -1)
     {
-         printf("error flags ");
+        printf("error flags ");
         ret = -1;
     }
     else
     {
         if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
         {
-             printf("error fcntl socket");
+            printf("error fcntl socket");
             ret = -1;
         }
     }

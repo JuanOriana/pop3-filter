@@ -101,6 +101,7 @@ struct pop3_proxy_args pop3_proxy_args;
 
 int main(int argc, char *argv[])
 {
+    int ret = 0;
     parse_args(argc, argv, &pop3_proxy_args);
 
     close(0); // Add an  extra FD to server
@@ -171,8 +172,6 @@ int main(int argc, char *argv[])
     {
         err_msg = "closing";
     }
-
-    int ret = 0;
 
 selector_finally:
     if (ss != SELECTOR_SUCCESS)
