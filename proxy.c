@@ -11,9 +11,8 @@
 #include <sys/time.h>
 #include <limits.h>
 #include "./utils/include/logger.h"
-#include "./include/proxy.h"
-#include "./utils/include/selector.h"
 #include "./utils/include/buffer.h"
+#include "./utils/include/selector.h"
 #include <sys/signal.h>
 
 #define max(n1, n2) ((n1) > (n2) ? (n1) : (n2))
@@ -25,6 +24,8 @@
 #define MAX_SOCKETS 30
 #define BUFFSIZE 1024
 #define MAX_PENDING_CONNECTIONS 3 // un valor bajo, para realizar pruebas
+
+const char *err_msg = NULL;
 
 typedef enum
 {
@@ -76,6 +77,7 @@ struct state_definition client_states[] = {
         .handler.handle_close = NULL,
     }};
 
+int proxy_create_connection(struct selector_key *key);
 int build_passive(IP_TYPE ip_type);
 
 int main(int argc, char *argv[])
@@ -99,7 +101,7 @@ int main(int argc, char *argv[])
 
     close(0); // Add an  extra FD to server
 
-    const char *err_msg = NULL;
+    
     selector_status ss = SELECTOR_SUCCESS;
     fd_selector selector = NULL;
     IP_TYPE ip_type = IPV4;
@@ -107,12 +109,13 @@ int main(int argc, char *argv[])
     const int server = build_passive(ip_type);
     if (server < 0)
     {
-        logger(FATAL, "Unable to establish connection");
+        // logger(FATAL, "Unable to establish connection");
     }
 
     if (selector_fd_set_nio(server) == -1)
     {
-        err_msg = "getting server socket flags";
+        perror("SELECTOR ");
+        err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
     const struct selector_init conf = {
@@ -187,8 +190,6 @@ selector_finally:
     }
     selector_close();
 
-    socksv5_pool_destroy();
-
     if (server >= 0)
     {
         close(server);
@@ -204,27 +205,27 @@ int build_passive(IP_TYPE ip_type)
     struct sockaddr_in6 address_6;
     int net_flag = (ip_type == IPV4) ? AF_INET : AF_INET6;
 
-    if ((client_socket = socket(net_flag, SOCK_STREAM, 0)) == 0)
+    if ((client_socket = socket(net_flag, SOCK_STREAM, 0)) < 0)  // Puede ser 0 por que cerramos el fd 0 para el proxy asi ganamos ud fd mas
     {
-        log(ERROR, "socket failed");
+        // log(ERROR, "socket failed");
         return -1;
     }
 
     // set master socket to allow multiple connections , this is just a good habit, it will work without this
     if (setsockopt(client_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0)
     {
-        log(ERROR, "set socket options failed");
+        // log(ERROR, "set socket options failed");
     }
 
-    if (ip_type == AF_INET)
+    if (ip_type == IPV4)
     {
         memset(&address, 0, sizeof(address));
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = INADDR_ANY;
         address.sin_port = htons(DEFAULT_SERVER_PORT);
-        if (bind(client_socket, (struct sockaddr *)&address, sizeof(address)) < 0)
+        if (bind(client_socket, (struct sockaddr *)&address, sizeof(address)) < 0)  
         {
-            log(ERROR, "bind failed");
+           // log(ERROR, "bind failed");
             close(client_socket);
             return -1;
         }
@@ -237,7 +238,8 @@ int build_passive(IP_TYPE ip_type)
         address_6.sin6_addr = in6addr_any;
         if (bind(client_socket, (struct sockaddr *)&address_6, sizeof(address_6)) < 0)
         {
-            log(ERROR, "bind failed");
+
+            // log(ERROR, "bind failed");
             close(client_socket);
             return -1;
         }
@@ -245,13 +247,13 @@ int build_passive(IP_TYPE ip_type)
 
     if (listen(client_socket, MAX_PENDING_CONNECTIONS) < 0)
     {
-        log(ERROR, "listen socket failed");
+        // log(ERROR, "listen socket failed");
         close(client_socket);
         return -1;
     }
     else
     {
-        log(DEBUG, "Waiting for TCP connections on socket %d\n", client_socket);
+        // log(DEBUG, "Waiting for TCP connections on socket %d\n", client_socket);
     }
     return client_socket;
 }
@@ -263,18 +265,26 @@ int proxy_create_connection(struct selector_key *key)
     socklen_t client_address_len = sizeof(client_address);
 
     // Wait for a client to connect
-    int client_socket = accept(key->fd, (struct sockaddr *)&client_address, &client_address_len);
+    int client_socket = accept(key->fd, (struct sockaddr *)&client_address, &client_address_len);  // TODO : Setear flag de no bloqueante
     if (client_socket < 0)
     {
-        log(ERROR, "accept() failed");
+        
+        // TODO : Logger error
         return -1;
     }
 
     // client_socket is connected to a client!
-    log(INFO, "Handling client %s", addrBuffer);
+    // log(INFO, "Handling client %s", addrBuffer);
 
     // TODO: CREAR HANDLER
-    ss = selector_register(key->s, client_socket, NULL, NULL, NULL); // Third parameter is null since non-handling is needed
-
+    selector_status ss = SELECTOR_SUCCESS;
+    ss = selector_register(key->s, client_socket, NULL, OP_NOOP, NULL); // Third parameter is null since non-handling is needed
+    if(ss != SELECTOR_SUCCESS)
+    {
+        //TODO
+    }
+   
+    // Falta crear socket entre proxy y servidor origen. Y registrarlo para escritura.
+    
     return client_socket;
 }
