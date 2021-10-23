@@ -10,6 +10,7 @@
 #include <netinet/in.h>
 #include <sys/time.h>
 #include <limits.h>
+#include "./include/args.h"
 #include "./utils/include/logger.h"
 #include "./utils/include/buffer.h"
 #include "./utils/include/selector.h"
@@ -19,13 +20,10 @@
 
 #define TRUE 1
 #define FALSE 0
-#define DEFAULT_SERVER_PORT 8888
-#define DEFAULT_ORIGIN_PORT 110
 #define MAX_SOCKETS 30
 #define BUFFSIZE 1024
+#define SELECTOR_SIZE 1024
 #define MAX_PENDING_CONNECTIONS 3 // un valor bajo, para realizar pruebas
-
-const char *err_msg = NULL;
 
 typedef enum
 {
@@ -58,21 +56,21 @@ struct connection
 };
 
 /** obtiene el struct (socks5 *) desde la llave de selección  */
-#define ATTACHMENT(key) ( (struct connection *)(key)->data)
+#define ATTACHMENT(key) ((struct connection *)(key)->data)
 
 /* declaración forward de los handlers de selección de una conexión
  * establecida entre un cliente y el proxy.
  */
 
-static void proxy_read   (struct selector_key *key);
-static void proxy_write  (struct selector_key *key);
-static void proxy_block  (struct selector_key *key);
-static void proxy_close  (struct selector_key *key);
+static void proxy_read(struct selector_key *key);
+static void proxy_write(struct selector_key *key);
+static void proxy_block(struct selector_key *key);
+static void proxy_close(struct selector_key *key);
 static const struct fd_handler proxy_handler = {
-    .handle_read   = proxy_read,
-    .handle_write  = proxy_write,
-    .handle_close  = proxy_close,
-    .handle_block  = proxy_block,
+    .handle_read = proxy_read,
+    .handle_write = proxy_write,
+    .handle_close = proxy_close,
+    .handle_block = proxy_block,
 };
 
 struct state_definition client_states[] = {
@@ -98,28 +96,15 @@ struct state_definition client_states[] = {
 int proxy_create_connection(struct selector_key *key);
 int build_passive(IP_TYPE ip_type);
 
+const char *err_msg = NULL;
+struct pop3_proxy_args pop3_proxy_args;
+
 int main(int argc, char *argv[])
 {
-    unsigned port = DEFAULT_SERVER_PORT;
-    // if(argc == 2) {
-    //     // utilizamos el default
-    // } else if(argc == 3) {
-    //     char *end     = 0;
-    //     const long sl = strtol(argv[1], &end, 10);
-
-    //     if (end == argv[2]|| '\0' != *end
-    //        || ((LONG_MIN == sl || LONG_MAX == sl) && ERANGE == errno)
-    //        || sl < 0 || sl > USHRT_MAX) {
-    //         logger(FATAL, "port should be an integer: %s\n", argv[1]);
-    //     }
-    //     port = sl;
-    // } else {
-    //     logger(FATAL, "Usage: %s <addr> <port>\n", argv[0]);
-    // }
+    parse_args(argc, argv, &pop3_proxy_args);
 
     close(0); // Add an  extra FD to server
 
-    
     selector_status ss = SELECTOR_SUCCESS;
     fd_selector selector = NULL;
     IP_TYPE ip_type = IPV4;
@@ -149,7 +134,7 @@ int main(int argc, char *argv[])
         goto selector_finally;
     }
 
-    selector = selector_new(1024);
+    selector = selector_new(SELECTOR_SIZE);
 
     if (selector == NULL)
     {
@@ -159,7 +144,7 @@ int main(int argc, char *argv[])
 
     // TODO: Borrar este handler por proxy_handler
     const struct fd_handler passive_handler = {
-        .handle_read = proxy_create_connection, 
+        .handle_read = proxy_create_connection,
         .handle_write = NULL,
         .handle_close = NULL, // nada que liberar
     };
@@ -224,7 +209,7 @@ int build_passive(IP_TYPE ip_type)
     struct sockaddr_in6 address_6;
     int net_flag = (ip_type == IPV4) ? AF_INET : AF_INET6;
 
-    if ((client_socket = socket(net_flag, SOCK_STREAM, 0)) < 0)  // Puede ser 0 por que cerramos el fd 0 para el proxy asi ganamos ud fd mas
+    if ((client_socket = socket(net_flag, SOCK_STREAM, 0)) < 0) // Puede ser 0 por que cerramos el fd 0 para el proxy asi ganamos ud fd mas
     {
         log(ERROR, "socket failed");
         return -1;
@@ -240,9 +225,10 @@ int build_passive(IP_TYPE ip_type)
     {
         memset(&address, 0, sizeof(address));
         address.sin_family = AF_INET;
+        //TODO: SOLVE ADDRESS RESOLUTION IN ARGS
         address.sin_addr.s_addr = INADDR_ANY;
-        address.sin_port = htons(DEFAULT_SERVER_PORT);
-        if (bind(client_socket, (struct sockaddr *)&address, sizeof(address)) < 0)  
+        address.sin_port = htons(pop3_proxy_args.pop3_proxy_port);
+        if (bind(client_socket, (struct sockaddr *)&address, sizeof(address)) < 0)
         {
             log(ERROR, "bind failed");
             close(client_socket);
@@ -253,7 +239,7 @@ int build_passive(IP_TYPE ip_type)
     {
         memset(&address_6, 0, sizeof(address_6));
         address_6.sin6_family = AF_INET6;
-        address_6.sin6_port = htons(DEFAULT_SERVER_PORT);
+        address_6.sin6_port = htons(pop3_proxy_args.pop3_proxy_port);
         address_6.sin6_addr = in6addr_any;
         if (bind(client_socket, (struct sockaddr *)&address_6, sizeof(address_6)) < 0)
         {
@@ -284,41 +270,36 @@ int proxy_create_connection(struct selector_key *key)
     socklen_t client_address_len = sizeof(client_address);
 
     // Wait for a client to connect
-    int client_socket = accept(key->fd, (struct sockaddr *)&client_address, &client_address_len);  // TODO : Setear flag de no bloqueante
+    int client_socket = accept(key->fd, (struct sockaddr *)&client_address, &client_address_len); // TODO : Setear flag de no bloqueante
     if (client_socket < 0)
     {
-        log(ERROR,"Cant accept client connection");
+        log(ERROR, "Cant accept client connection");
         return -1;
     }
 
-   
-
     // TODO: Borrar este handler por proxy_handler
     const struct fd_handler active_handler = {
-        .handle_read = NULL, 
+        .handle_read = NULL,
         .handle_write = NULL,
         .handle_close = NULL, // nada que liberar
     };
     selector_status ss = SELECTOR_SUCCESS;
-    ss = selector_register(key->s, client_socket, &active_handler, OP_NOOP, NULL); 
-    if(ss != SELECTOR_SUCCESS)
+    ss = selector_register(key->s, client_socket, &active_handler, OP_NOOP, NULL);
+    if (ss != SELECTOR_SUCCESS)
     {
-        log(ERROR,"Selector error register %s ",selector_error(ss));
+        log(ERROR, "Selector error register %s ", selector_error(ss));
         //TODO
     }
-   
+
     log(INFO, "Connection accepted");
     // Falta crear socket entre proxy y servidor origen. Y registrarlo para escritura.
-    
+
     return client_socket;
 }
 
-
-
-
-
 static void
-proxy_read(struct selector_key *key) {
+proxy_read(struct selector_key *key)
+{
     // struct state_machine *stm   = &ATTACHMENT(key)->stm;
     // const enum socks_v5state st = stm_handler_read(stm, key);
 
@@ -328,7 +309,8 @@ proxy_read(struct selector_key *key) {
 }
 
 static void
-proxy_write(struct selector_key *key) {
+proxy_write(struct selector_key *key)
+{
     // struct state_machine *stm   = &ATTACHMENT(key)->stm;
     // const enum socks_v5state st = stm_handler_write(stm, key);
 
@@ -338,7 +320,8 @@ proxy_write(struct selector_key *key) {
 }
 
 static void
-proxy_block(struct selector_key *key) {
+proxy_block(struct selector_key *key)
+{
     // struct state_machine *stm   = &ATTACHMENT(key)->stm;
     // const enum socks_v5state st = stm_handler_block(stm, key);
 
@@ -348,6 +331,7 @@ proxy_block(struct selector_key *key) {
 }
 
 static void
-proxy_close(struct selector_key *key) {
+proxy_close(struct selector_key *key)
+{
     // socks5_destroy(ATTACHMENT(key));
 }
