@@ -3,32 +3,16 @@
 
 #include <stdbool.h>
 
-#define MAX_USERS 10
-
-struct users {
-    char *name;
-    char *pass;
-};
-
-struct doh {
-    char           *host;
-    char           *ip;
-    unsigned short  port;
-    char           *path;
-    char           *query;
-};
-
-struct socks5args {
-    char           *socks_addr;
-    unsigned short  socks_port;
-
-    char *          mng_addr;
-    unsigned short  mng_port;
-
-    bool            disectors_enabled;
-
-    struct doh      doh;
-    struct users    users[MAX_USERS];
+struct pop3_proxy_args
+{
+    char *pop3_proxy_addr;
+    unsigned short pop3_proxy_port;
+    char *origin_addr;
+    unsigned short origin_port;
+    char *mng_addr;
+    unsigned short mng_port;
+    char *filter;
+    char *error_file;
 };
 
 /**
@@ -36,7 +20,6 @@ struct socks5args {
  * args con defaults o la seleccion humana. Puede cortar
  * la ejecuciÃ³n.
  */
-void 
-parse_args(const int argc, char **argv, struct socks5args *args);
+void parse_args(const int argc, char **argv, struct pop3_proxy_args *args);
 
 #endif
