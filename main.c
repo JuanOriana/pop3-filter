@@ -46,28 +46,28 @@ int main(int argc, char *argv[])
     {
         log(DEBUG, "Unable to build passive socket in IPv4");
     }
-
-    server6 = build_passive(ADDR_IPV6);
-    if (server6 < 0)
-    {
-        log(DEBUG, "Unable to build passive socket in IPv6");
-    }
     else if (selector_fd_set_nio(server4) == -1)
     {
         perror("SELECTOR ");
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
-
-    if (server4 < 0 && server6 < 0)
-    {
-        log(FATAL, "Couldnt establish ANY passive socket for proxy");
-    }
     else if (selector_fd_set_nio(server6) == -1)
     {
         perror("SELECTOR ");
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
+    }
+
+    server6 = build_passive(ADDR_IPV6);
+    if (server6 < 0)
+    {
+        log(DEBUG, "Unable to build passive socket in IPv6");
+    }
+
+    if (server4 < 0 && server6 < 0)
+    {
+        log(FATAL, "Couldnt establish ANY passive socket for proxy");
     }
 
     const struct selector_init conf = {
@@ -165,7 +165,7 @@ selector_finally:
 
 static int build_passive(IP_REP_TYPE ip_type)
 {
-    int opt = TRUE;
+    int opt = TRUE, result = -1;
     int client_socket;
     struct sockaddr_in address;
     struct sockaddr_in6 address_6;
@@ -187,8 +187,12 @@ static int build_passive(IP_REP_TYPE ip_type)
     {
         memset(&address, 0, sizeof(address));
         address.sin_family = AF_INET;
-        //TODO: SOLVE ADDRESS RESOLUTION IN ARGS
-        address.sin_addr.s_addr = INADDR_ANY;
+        if ((result = inet_pton(AF_INET, pop3_proxy_args.pop3_proxy_addr, &address.sin_addr.s_addr)) <= 0)
+        {
+            log(ERROR, "Cant resolve IPv4 stringed address");
+            close(client_socket);
+            return -1;
+        }
         address.sin_port = htons(pop3_proxy_args.pop3_proxy_port);
         if (bind(client_socket, (struct sockaddr *)&address, sizeof(address)) < 0)
         {
@@ -202,7 +206,12 @@ static int build_passive(IP_REP_TYPE ip_type)
         memset(&address_6, 0, sizeof(address_6));
         address_6.sin6_family = AF_INET6;
         address_6.sin6_port = htons(pop3_proxy_args.pop3_proxy_port);
-        address_6.sin6_addr = in6addr_any;
+        if ((result = inet_pton(AF_INET6, pop3_proxy_args.pop3_proxy_addr, &address_6.sin6_addr)) <= 0)
+        {
+            log(ERROR, "Cant resolve IPv6 stringed address");
+            close(client_socket);
+            return -1;
+        }
         if (bind(client_socket, (struct sockaddr *)&address_6, sizeof(address_6)) < 0)
         {
 
