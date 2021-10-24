@@ -23,8 +23,9 @@
 
 #define MAX_SOCKETS 30
 #define BUFFSIZE 1024
- // un valor bajo, para realizar pruebas
+// un valor bajo, para realizar pruebas
 
+// static unsigned dns_resolve_done(struct selector_key key);
 
 typedef enum
 {
@@ -36,8 +37,6 @@ typedef enum
 
 typedef struct state_definition state_definition;
 
-
-
 /** obtiene el struct (socks5 *) desde la llave de selección  */
 #define ATTACHMENT(key) ((struct connection *)(key)->data)
 
@@ -45,10 +44,8 @@ typedef struct state_definition state_definition;
  * establecida entre un cliente y el proxy.
  */
 
-
-struct connection only_connection ;
+struct connection only_connection;
 extern struct pop3_proxy_args pop3_proxy_args;
-
 
 static void proxy_read(struct selector_key *key);
 static void proxy_write(struct selector_key *key);
@@ -65,12 +62,13 @@ static const struct state_definition client_states[] = {
     {
         .state = RESOLVING,
         .on_arrival = NULL, // resolver nombre e irse a connecting
-        .on_block_ready= NULL,
+        //.on_block_ready = dns_resolve_done, // se ejecuta cuando se resuelve el nombre
+        // CREO que no hay que pasarle nada "on_arrival", el selector notifica cuando termino el "dns_resolve_blocking"
     },
     {
         .state = CONNECTING,
         .on_arrival = NULL, // crear la estructura de la conexion
-        .on_block_ready= NULL,
+        .on_block_ready = NULL,
     },
     {
         .state = COPYING,
@@ -80,10 +78,7 @@ static const struct state_definition client_states[] = {
     }};
 
 static int proxy_connect_to_origin();
-struct connection get_new_connection(int client_fd,int origin_fd);
-
-
-
+struct connection get_new_connection(int client_fd, int origin_fd);
 
 static int
 proxy_connect_to_origin()
@@ -122,7 +117,6 @@ proxy_connect_to_origin()
     return origin_socket;
 }
 
-
 int proxy_create_connection(struct selector_key *key)
 {
     struct sockaddr_storage client_address; // Client address
@@ -144,41 +138,38 @@ int proxy_create_connection(struct selector_key *key)
         return -1;
     }
 
-
     // TODO: Borrar este handler por proxy_handler
-    const struct fd_handler active_handler = {
-        .handle_read = NULL,
-        .handle_write = NULL,
-        .handle_close = NULL, // nada que liberar
-    };
-    
+    // const struct fd_handler active_handler = {
+    //     .handle_read = NULL,
+    //     .handle_write = NULL,
+    //     .handle_close = NULL, // nada que liberar
+    // };
+
     selector_status ss = SELECTOR_SUCCESS;
-    ss = selector_register(key->s, client_socket, &active_handler, OP_NOOP, NULL);
+    // ss = selector_register(key->s, client_socket, &active_handler, OP_NOOP, NULL);
+    ss = selector_register(key->s, client_socket, &proxy_handler, OP_NOOP, NULL);
     if (ss != SELECTOR_SUCCESS)
     {
         log(ERROR, "Selector error register %s ", selector_error(ss));
-        //TODO
+        // TODO
     }
 
-    
-    only_connection =  get_new_connection(client_socket,origin_socket);
-
+    only_connection = get_new_connection(client_socket, origin_socket);
 
     log(INFO, "Connection accepted");
-
 
     return client_socket;
 }
 
-
-struct connection get_new_connection(int client_fd,int origin_fd){
-   struct state_machine stm = {
-        .initial = CONNECTING,     // TODO: remplazar por RESOLVING cuando lo tengamos
+struct connection get_new_connection(int client_fd, int origin_fd)
+{
+    struct state_machine stm = {
+        .initial = CONNECTING, // TODO: remplazar por RESOLVING cuando lo tengamos
         .max_state = DONE,
         .states = client_states,
     };
 
-    // stm_init(&stm); 
+    // stm_init(&stm);
 
     struct buffer client_buf;
     uint8_t direct_buff[BUFFSIZE]; // TODO: Hacer este numero un CTE
@@ -187,23 +178,23 @@ struct connection get_new_connection(int client_fd,int origin_fd){
     struct buffer origin_buf;
     uint8_t direct_buff_origin[BUFFSIZE]; // TODO: Hacer este numero un CTE
     buffer_init(&origin_buf, N_BUFFER(direct_buff_origin), direct_buff_origin);
-    
-    struct connection  new_connection ={
+
+    struct connection new_connection = {
         .fd_client = client_fd,
         .stm = stm,
         .fd_origin = origin_fd,
         .client_buffer = client_buf,
         .origin_buffer = origin_buf,
+        // TODO: ver si hace falta agregar algo de origin_address_information y origin_resolution o ponerlos en NULL
     };
-
 
     return new_connection;
 }
 
-
 static void
-proxy_read(struct selector_key *key) {
-    printf("Llego al read  con fd %d y data %s",key->fd,(char*)key->data);
+proxy_read(struct selector_key *key)
+{
+    printf("Llego al read  con fd %d y data %s", key->fd, (char *)key->data);
     // struct state_machine *stm   = &ATTACHMENT(key)->stm;
     // const enum socks_v5state st = stm_handler_read(stm, key);
 
@@ -240,5 +231,66 @@ proxy_close(struct selector_key *key)
     // socks5_destroy(ATTACHMENT(key));
 }
 
+///////////////////////// FUNCIONES DE STATE_DEFINITION /////////////////////////
 
+// RESOLVING
 
+//// resolucion del dominio de forma bloqueante, una vez terminada, el selector es notificado
+// static void *dns_resolve_blocking(void *data)
+// {
+//     struct selector_key key = (struct selector_key *)data;
+//     struct connection *proxy = ATTACHMENT(key);
+
+//     pthread_detach(pthread_self()); // REV
+//     proxy->origin_resolution = 0;
+//     struct addrinfo hints = {
+//         .ai_family = AF_UNSPEC,
+//         /** Permite IPv4 o IPv6. */
+//         .ai_socktype = SOCK_STREAM,
+//         .ai_flags = AI_PASSIVE,
+//         .ai_protocol = 0,
+//         .ai_canonname = NULL,
+//         .ai_addr = NULL,
+//         .ai_next = NULL,
+//     };
+
+//     char buff[7];
+//     snprintf(buff, sizeof(buff), "%d", proxy->origin_address_information.port);
+//     getaddrinfo(proxy->origin_address_information.addr.fqdn, buff, &hints, &proxy->origin_resolution);
+//     selector_notify_block(key->s, key->fd);
+
+//     free(data);
+//     return 0;
+// }
+
+// //// on_block_ready
+// static unsigned dns_resolve_done(struct selector_key key)
+// {
+//     struct connection *proxy = ATTACHMENT(key);
+//     if (proxy->origin_resolution != 0)
+//     {
+//         proxy->origin_address_information.domain = proxy->origin_resolution->ai_family;
+//         proxy->origin_address_information.addr_length = proxy->origin_resolution->ai_addrlen;
+//         memcpy(&proxy->origin_address_information.addr.addr_storage,
+//                proxy->origin_resolution->ai_addr,
+//                proxy->origin_resolution->ai_addrlen);
+//         freeaddrinfo(proxy->origin_resolution);
+//         proxy->origin_resolution = 0;
+//     }
+//     else
+//     {
+//         // proxy->errorSender.message = "-ERR Connection refused.\r\n";
+//         // if (MUX_SUCCESS != setInterest(key->s, proxy->clientFd, WRITE))
+//         //     return ERROR;
+//         // return SEND_ERROR_MSG;
+//     }
+
+//     return connect_to_host(key->s, proxy);
+// }
+
+// /**
+//  * Intenta establecer una conexión con el origin server.
+//  */
+// static unsigned connect_to_host(fd_selector selector, struct connection *proxy)
+// {
+// }
