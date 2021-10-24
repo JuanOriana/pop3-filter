@@ -15,13 +15,14 @@
 #include "./utils/include/logger.h"
 #include "./utils/include/buffer.h"
 #include "./utils/include/selector.h"
+#include "./utils/include/netutils.h"
+
 #include <sys/signal.h>
 #include "./utils/include/stm.h"
 #include "./include/proxy.h"
 #include "./utils/include/proxypop3nio.h"
 
 struct pop3_proxy_args pop3_proxy_args;
-
 
 int main(int argc, char *argv[])
 {
@@ -33,7 +34,7 @@ int main(int argc, char *argv[])
 
     selector_status ss = SELECTOR_SUCCESS;
     fd_selector selector = NULL;
-    IP_TYPE ip_type = IPV4;
+    IP_REP_TYPE ip_type = ADDR_IPV4;
 
     const int server = build_passive(ip_type);
     if (server < 0)
@@ -124,15 +125,13 @@ selector_finally:
     return ret;
 }
 
-
-
-static int build_passive(IP_TYPE ip_type)
+static int build_passive(IP_REP_TYPE ip_type)
 {
     int opt = TRUE;
     int client_socket;
     struct sockaddr_in address;
     struct sockaddr_in6 address_6;
-    int net_flag = (ip_type == IPV4) ? AF_INET : AF_INET6;
+    int net_flag = (ip_type == ADDR_IPV4) ? AF_INET : AF_INET6;
 
     if ((client_socket = socket(net_flag, SOCK_STREAM, 0)) < 0) // Puede ser 0 por que cerramos el fd 0 para el proxy asi ganamos ud fd mas
     {
@@ -146,7 +145,7 @@ static int build_passive(IP_TYPE ip_type)
         log(ERROR, "Passive: set socket options failed");
     }
 
-    if (ip_type == IPV4)
+    if (ip_type == ADDR_IPV4)
     {
         memset(&address, 0, sizeof(address));
         address.sin_family = AF_INET;
@@ -187,4 +186,3 @@ static int build_passive(IP_TYPE ip_type)
     }
     return client_socket;
 }
-

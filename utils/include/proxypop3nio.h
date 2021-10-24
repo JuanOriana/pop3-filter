@@ -5,11 +5,7 @@
 #define FALSE 0
 #define MAX_PENDING_CONNECTIONS 3
 
-// typedef enum
-// {
-//     IPV4,
-//     IPV6
-// } IP_TYPE;
+#include "../../utils/include/netutils.h"
 
 typedef union address
 {
@@ -19,7 +15,7 @@ typedef union address
 
 typedef struct address_information
 {
-    IP_TYPE type;
+    IP_REP_TYPE type;
     address addr;
     /** Port in network byte order */
     in_port_t port;
@@ -44,5 +40,5 @@ struct connection
 };
 
 int proxy_create_connection(struct selector_key *key);
-static int build_passive(IP_TYPE ip_type);
+static int build_passive(IP_REP_TYPE ip_type);
 #endif
