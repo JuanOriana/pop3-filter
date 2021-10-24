@@ -16,7 +16,6 @@
 #include "./include/selector.h"
 #include <sys/signal.h>
 #include "./include/stm.h"
-#include "../include/proxy.h"
 #include "./include/proxypop3nio.h"
 
 #define max(n1, n2) ((n1) > (n2) ? (n1) : (n2))

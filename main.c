@@ -19,35 +19,57 @@
 
 #include <sys/signal.h>
 #include "./utils/include/stm.h"
-#include "./include/proxy.h"
+#include "./include/main.h"
 #include "./utils/include/proxypop3nio.h"
 
 struct pop3_proxy_args pop3_proxy_args;
+
+#define MAX_PENDING_CONNECTIONS 20
+#define SELECTOR_SIZE 1024
+
+static bool done = false;
 
 int main(int argc, char *argv[])
 {
     const char *err_msg = NULL;
     int ret = 0;
+    int server4, server6;
     parse_args(argc, argv, &pop3_proxy_args);
 
     close(0); // Add an  extra FD to server
 
     selector_status ss = SELECTOR_SUCCESS;
     fd_selector selector = NULL;
-    IP_REP_TYPE ip_type = ADDR_IPV4;
 
-    const int server = build_passive(ip_type);
-    if (server < 0)
+    server4 = build_passive(ADDR_IPV4);
+    if (server4 < 0)
     {
-        log(FATAL, "Unable to establish connection");
+        log(DEBUG, "Unable to build passive socket in IPv4");
     }
 
-    if (selector_fd_set_nio(server) == -1)
+    server6 = build_passive(ADDR_IPV6);
+    if (server6 < 0)
+    {
+        log(DEBUG, "Unable to build passive socket in IPv6");
+    }
+    else if (selector_fd_set_nio(server4) == -1)
     {
         perror("SELECTOR ");
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
+
+    if (server4 < 0 && server6 < 0)
+    {
+        log(FATAL, "Couldnt establish ANY passive socket for proxy");
+    }
+    else if (selector_fd_set_nio(server6) == -1)
+    {
+        perror("SELECTOR ");
+        err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
+        goto selector_finally;
+    }
+
     const struct selector_init conf = {
         .signal = SIGALRM,
         .select_timeout = {
@@ -75,15 +97,27 @@ int main(int argc, char *argv[])
         .handle_close = NULL, // nada que liberar
     };
 
-    ss = selector_register(selector, server, &passive_handler, OP_READ, NULL);
-
-    if (ss != SELECTOR_SUCCESS)
+    if (server4 >= 0)
     {
-        err_msg = "registering fd";
-        goto selector_finally;
+        ss = selector_register(selector, server4, &passive_handler, OP_READ, NULL);
+        if (ss != SELECTOR_SUCCESS)
+        {
+            err_msg = "registering ipv4 passive fd";
+            goto selector_finally;
+        }
     }
 
-    while (TRUE)
+    if (server6 >= 0)
+    {
+        ss = selector_register(selector, server6, &passive_handler, OP_READ, NULL);
+        if (ss != SELECTOR_SUCCESS)
+        {
+            err_msg = "registering ipv6 passive fd";
+            goto selector_finally;
+        }
+    }
+
+    for (; !done;)
     {
         err_msg = NULL;
         ss = selector_select(selector);
@@ -118,9 +152,13 @@ selector_finally:
     }
     selector_close();
 
-    if (server >= 0)
+    if (server4 >= 0)
     {
-        close(server);
+        close(server4);
+    }
+    if (server6 >= 0)
+    {
+        close(server6);
     }
     return ret;
 }

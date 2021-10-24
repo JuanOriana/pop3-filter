@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 
 #define SOCKADDR_TO_HUMAN_MIN (INET6_ADDRSTRLEN + 5 + 1)
+#define N_BUFFER(x) (sizeof(x) / sizeof((x)[0]))
 
 typedef enum IP_REP_TYPE
 {

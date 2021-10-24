@@ -1,3 +1,4 @@
 .vscode
-proxy
-*.dysm
+main
+*.dYSM
+*.dYSM/*

@@ -3,7 +3,6 @@
 
 #define TRUE 1
 #define FALSE 0
-#define MAX_PENDING_CONNECTIONS 3
 
 #include "../../utils/include/netutils.h"
 
