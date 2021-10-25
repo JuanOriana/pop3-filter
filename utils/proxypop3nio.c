@@ -22,7 +22,24 @@
 
 #define MAX_SOCKETS 30
 #define BUFFSIZE 1024
-// un valor bajo, para realizar pruebas
+#define ADDR_STRING_BUFF_SIZE 64
+
+typedef struct connection
+{
+    int client_fd;
+    int origin_fd;
+
+    struct state_machine stm;
+
+    buffer client_buffer;
+    buffer origin_buffer;
+
+    address_representation origin_address_representation;
+    /** Resolución de la dirección del origin server. */
+    struct sockaddr_in *origin_resolution;
+
+    struct connection *next;
+} connection;
 
 // static unsigned dns_resolve_done(struct selector_key key);
 
@@ -121,13 +138,18 @@ int proxy_create_connection(struct selector_key *key)
     struct sockaddr_storage client_address; // Client address
     // Set length of client address structure (in-out parameter)
     socklen_t client_address_len = sizeof(client_address);
+    address_representation *origin_representation = (address_representation *)key->data;
+    char address_to_string[ADDR_STRING_BUFF_SIZE];
+    selector_status ss = SELECTOR_SUCCESS;
 
-    int origin_socket = proxy_connect_to_origin();
-    if (origin_socket < 0)
-    {
-        log(ERROR, "Origin connection failed completely");
-        return -1;
-    }
+    // TODO: ESTA LOGICA VA EN CONNECTING !!!
+    int origin_socket = 0;
+    // int origin_socket = proxy_connect_to_origin();
+    // if (origin_socket < 0)
+    // {
+    //     log(ERROR, "Origin connection failed completely");
+    //     return -1;
+    // }
 
     // Wait for a client to connect
     int client_socket = accept(key->fd, (struct sockaddr *)&client_address, &client_address_len); // TODO : Setear flag de no bloqueante
@@ -137,6 +159,18 @@ int proxy_create_connection(struct selector_key *key)
         return -1;
     }
 
+    if (set_non_blocking(client_socket) == -1)
+    {
+        log(ERROR, "Failed on passive-accept");
+        close(client_socket);
+        return -1;
+    }
+
+    sockaddr_to_human(address_to_string, ADDR_STRING_BUFF_SIZE, &client_address);
+    log(INFO, "Accepting connection from: %s", address_to_string);
+
+    //CREATE CONENCITON STATE!!!! WITH CLIENT_SOCKET origin_representation and buffer
+
     // TODO: Borrar este handler por proxy_handler
     // const struct fd_handler active_handler = {
     //     .handle_read = NULL,
@@ -144,13 +178,24 @@ int proxy_create_connection(struct selector_key *key)
     //     .handle_close = NULL, // nada que liberar
     // };
 
-    selector_status ss = SELECTOR_SUCCESS;
-    // ss = selector_register(key->s, client_socket, &active_handler, OP_NOOP, NULL);
     ss = selector_register(key->s, client_socket, &proxy_handler, OP_NOOP, NULL);
     if (ss != SELECTOR_SUCCESS)
     {
         log(ERROR, "Selector error register %s ", selector_error(ss));
-        // TODO
+        close(client_socket);
+        return -1;
+        // More checks
+    }
+
+    if (origin_representation->type != ADDR_DOMAIN)
+    {
+        log(DEBUG, "No need to resolve name");
+        //LOGGING LOGIC
+        //SETEO EL ESTADO DE LA STATE MACHINE EN CONNECTING (ME CONECTO DE UNA)
+    }
+    else
+    {
+        log(DEBUG, "Trying to resolve name: %s", origin_representation->addr.fqdn);
     }
 
     only_connection = get_new_connection(client_socket, origin_socket);
@@ -179,9 +224,9 @@ struct connection get_new_connection(int client_fd, int origin_fd)
     buffer_init(&origin_buf, N_BUFFER(direct_buff_origin), direct_buff_origin);
 
     struct connection new_connection = {
-        .fd_client = client_fd,
+        .client_fd = client_fd,
         .stm = stm,
-        .fd_origin = origin_fd,
+        .origin_fd = origin_fd,
         .client_buffer = client_buf,
         .origin_buffer = origin_buf,
         // TODO: ver si hace falta agregar algo de origin_address_information y origin_resolution o ponerlos en NULL

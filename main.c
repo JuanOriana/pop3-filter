@@ -27,13 +27,16 @@ struct pop3_proxy_args pop3_proxy_args;
 #define MAX_PENDING_CONNECTIONS 20
 #define SELECTOR_SIZE 1024
 
+static int build_passive(IP_REP_TYPE ip_type);
+
 static bool done = false;
 
 int main(int argc, char *argv[])
 {
     const char *err_msg = NULL;
     int ret = 0;
-    int server4, server6;
+    int server4 = -1, server6 = -1;
+    address_representation origin_representation;
     parse_args(argc, argv, &pop3_proxy_args);
 
     close(0); // Add an  extra FD to server
@@ -52,17 +55,18 @@ int main(int argc, char *argv[])
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
+
+    server6 = build_passive(ADDR_IPV6);
+
+    if (server6 < 0)
+    {
+        log(DEBUG, "Unable to build passive socket in IPv6");
+    }
     else if (selector_fd_set_nio(server6) == -1)
     {
         perror("SELECTOR ");
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
-    }
-
-    server6 = build_passive(ADDR_IPV6);
-    if (server6 < 0)
-    {
-        log(DEBUG, "Unable to build passive socket in IPv6");
     }
 
     if (server4 < 0 && server6 < 0)
@@ -97,9 +101,13 @@ int main(int argc, char *argv[])
         .handle_close = NULL, // nada que liberar
     };
 
+    // Mando una representacion del origen al selector para generar los sockets activos
+    origin_representation.port = pop3_proxy_args.origin_port;
+    get_address_representation(&origin_representation, pop3_proxy_args.origin_addr);
+
     if (server4 >= 0)
     {
-        ss = selector_register(selector, server4, &passive_handler, OP_READ, NULL);
+        ss = selector_register(selector, server4, &passive_handler, OP_READ, &origin_representation);
         if (ss != SELECTOR_SUCCESS)
         {
             err_msg = "registering ipv4 passive fd";
@@ -109,7 +117,7 @@ int main(int argc, char *argv[])
 
     if (server6 >= 0)
     {
-        ss = selector_register(selector, server6, &passive_handler, OP_READ, NULL);
+        ss = selector_register(selector, server6, &passive_handler, OP_READ, &origin_representation);
         if (ss != SELECTOR_SUCCESS)
         {
             err_msg = "registering ipv6 passive fd";

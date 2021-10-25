@@ -50,5 +50,5 @@ void get_address_representation(address_representation *address, const char *str
  */
 const char *
 sockaddr_to_human(char *buff, const size_t buffsize,
-                  const struct sockaddr *addr);
+                  struct sockaddr_storage *addr);
 #endif

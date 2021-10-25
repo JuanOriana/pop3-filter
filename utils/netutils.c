@@ -9,7 +9,7 @@
 
 extern const char *
 sockaddr_to_human(char *buff, const size_t buffsize,
-                  const struct sockaddr *addr)
+                  struct sockaddr_storage *addr)
 {
     if (addr == 0)
     {
@@ -20,7 +20,7 @@ sockaddr_to_human(char *buff, const size_t buffsize,
     void *p = 0x00;
     bool handled = false;
 
-    switch (addr->sa_family)
+    switch (addr->ss_family)
     {
     case AF_INET:
         p = &((struct sockaddr_in *)addr)->sin_addr;
@@ -35,7 +35,7 @@ sockaddr_to_human(char *buff, const size_t buffsize,
     }
     if (handled)
     {
-        if (inet_ntop(addr->sa_family, p, buff, buffsize) == 0)
+        if (inet_ntop(addr->ss_family, p, buff, buffsize) == 0)
         {
             strncpy(buff, "unknown ip", buffsize);
             buff[buffsize - 1] = 0;
@@ -95,5 +95,4 @@ void get_address_representation(address_representation *address, const char *str
     }
     intent_ipv4.sin_port = htons(address->port);
     memcpy(&address->addr.address_storage, &intent_ipv4, address->addr_len);
-    return;
 }
