@@ -49,6 +49,7 @@ typedef enum
     CONNECTING,
     COPYING,
     DONE,
+    CONNECTION_ERROR
 } proxy_state;
 
 typedef struct state_definition state_definition;
@@ -60,7 +61,7 @@ typedef struct state_definition state_definition;
  * establecida entre un cliente y el proxy.
  */
 
-struct connection only_connection;
+struct connection *connection_pool;
 extern struct pop3_proxy_args pop3_proxy_args;
 
 static void proxy_read(struct selector_key *key);
@@ -94,7 +95,7 @@ static const struct state_definition client_states[] = {
     }};
 
 static int proxy_connect_to_origin();
-struct connection get_new_connection(int client_fd, int origin_fd);
+struct connection *new_connection(int client_fd, address_representation origin_address_representation);
 
 static int
 proxy_connect_to_origin()
@@ -198,40 +199,59 @@ int proxy_create_connection(struct selector_key *key)
         log(DEBUG, "Trying to resolve name: %s", origin_representation->addr.fqdn);
     }
 
-    only_connection = get_new_connection(client_socket, origin_socket);
+    new_connection(client_socket, origin_socket);
 
     log(INFO, "Connection accepted");
 
     return client_socket;
 }
 
-struct connection get_new_connection(int client_fd, int origin_fd)
+struct connection *new_connection(int client_fd, address_representation origin_address_representation)
 {
-    struct state_machine stm = {
-        .initial = CONNECTING, // TODO: remplazar por RESOLVING cuando lo tengamos
-        .max_state = DONE,
-        .states = client_states,
-    };
-
-    // stm_init(&stm);
+    struct connection *new_connection = malloc;
 
     struct buffer client_buf;
-    uint8_t direct_buff[BUFFSIZE]; // TODO: Hacer este numero un CTE
-    buffer_init(&client_buf, N_BUFFER(direct_buff), direct_buff);
+    uint8_t direct_buff[BUFFSIZE];                                // TODO: Hacer este numero un CTE
+    buffer_init(&client_buf, N_BUFFER(direct_buff), direct_buff); // Errores?
 
     struct buffer origin_buf;
-    uint8_t direct_buff_origin[BUFFSIZE]; // TODO: Hacer este numero un CTE
-    buffer_init(&origin_buf, N_BUFFER(direct_buff_origin), direct_buff_origin);
+    uint8_t direct_buff_origin[BUFFSIZE];                                       // TODO: Hacer este numero un CTE
+    buffer_init(&origin_buf, N_BUFFER(direct_buff_origin), direct_buff_origin); // Errores?
 
-    struct connection new_connection = {
-        .client_fd = client_fd,
-        .stm = stm,
-        .origin_fd = origin_fd,
-        .client_buffer = client_buf,
-        .origin_buffer = origin_buf,
-        // TODO: ver si hace falta agregar algo de origin_address_information y origin_resolution o ponerlos en NULL
-    };
+    new_connection = malloc(sizeof(*new_connection));
 
+    if (new_connection == NULL)
+    {
+        free(client_buf.data);
+        free(&client_buf);
+        free(origin_buf.data);
+        free(&origin_buf);
+        return NULL;
+    }
+
+    new_connection->client_fd = client_fd;
+    new_connection->origin_fd = -1;
+    new_connection->client_buffer = client_buf;
+    new_connection->origin_buffer = origin_buf;
+    new_connection->origin_address_representation = origin_address_representation;
+    new_connection->next = NULL;
+
+    new_connection->stm.initial = RESOLVING; // TODO: remplazar por RESOLVING cuando lo tengamos
+    new_connection->stm.max_state = CONNECTION_ERROR;
+    new_connection->stm.states = client_states;
+    stm_init(&new_connection->stm);
+
+    //Verifico si es el primero
+    if (connection_pool = NULL)
+    {
+        connection_pool = new_connection;
+    }
+    else
+    {
+        connection_pool->next = new_connection;
+    }
+
+    //TODO: CODEAR EL DESTROY DE UNA CONEXION // TODAS LAS CONEXIONES
     return new_connection;
 }
 
