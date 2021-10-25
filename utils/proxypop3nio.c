@@ -96,6 +96,7 @@ static const struct state_definition client_states[] = {
 
 static int proxy_connect_to_origin();
 struct connection *new_connection(int client_fd, address_representation origin_address_representation);
+static void proxy_destroy(connection *connection);
 
 static int
 proxy_connect_to_origin()
@@ -170,10 +171,19 @@ int proxy_passive_accept(struct selector_key *key)
     //     .handle_close = NULL, // nada que liberar
     // };
 
+    connection *new_connection_instance = new_connection(client_socket, *origin_representation);
+    if (new_connection_instance == NULL)
+    {
+        log(ERROR, "Couldnt create new connection");
+        close(client_socket);
+        return -1;
+    }
+
     ss = selector_register(key->s, client_socket, &proxy_handler, OP_NOOP, NULL);
     if (ss != SELECTOR_SUCCESS)
     {
         log(ERROR, "Selector error register %s ", selector_error(ss));
+        proxy_destroy(new_connection_instance);
         close(client_socket);
         return -1;
         // More checks
@@ -182,6 +192,7 @@ int proxy_passive_accept(struct selector_key *key)
     if (origin_representation->type != ADDR_DOMAIN)
     {
         log(DEBUG, "No need to resolve name");
+        //new_connection_instance->stm.initial = connecting(key->mux, proxy);
         //LOGGING LOGIC
         //SETEO EL ESTADO DE LA STATE MACHINE EN CONNECTING (ME CONECTO DE UNA)
     }
@@ -189,8 +200,6 @@ int proxy_passive_accept(struct selector_key *key)
     {
         log(DEBUG, "Trying to resolve name: %s", origin_representation->addr.fqdn);
     }
-
-    new_connection(client_socket, *origin_representation);
 
     log(INFO, "Connection accepted");
 
@@ -227,7 +236,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     new_connection->origin_address_representation = origin_address_representation;
     new_connection->next = NULL;
 
-    new_connection->stm.initial = RESOLVING; // TODO: remplazar por RESOLVING cuando lo tengamos
+    new_connection->stm.initial = RESOLVING;
     new_connection->stm.max_state = CONNECTION_ERROR;
     new_connection->stm.states = client_states;
     stm_init(&new_connection->stm);
@@ -355,6 +364,7 @@ proxy_close(struct selector_key *key)
  */
 static void proxy_destroy(connection *connection)
 {
+    //CLOSE SOCKETS?
     free(&connection->client_buffer.data);
     free(&connection->client_buffer);
     free(&connection->origin_buffer.data);
