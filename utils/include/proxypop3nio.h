@@ -7,4 +7,5 @@
 #include "../../utils/include/netutils.h"
 
 int proxy_passive_accept(struct selector_key *key);
+void proxy_pool_destroy();
 #endif

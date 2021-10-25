@@ -199,7 +199,7 @@ int proxy_passive_accept(struct selector_key *key)
 
 struct connection *new_connection(int client_fd, address_representation origin_address_representation)
 {
-    struct connection *new_connection = malloc(sizeof(struct connection));
+    connection *new_connection = malloc(sizeof(connection));
 
     struct buffer client_buf;
     uint8_t direct_buff[BUFFSIZE];                                // TODO: Hacer este numero un CTE
@@ -349,3 +349,25 @@ proxy_close(struct selector_key *key)
 // static unsigned connect_to_host(fd_selector selector, struct connection *proxy)
 // {
 // }
+
+/**
+ *  Destruye y libera un proxyPopv3
+ */
+static void proxy_destroy(connection *connection)
+{
+    free(&connection->client_buffer.data);
+    free(&connection->client_buffer);
+    free(&connection->origin_buffer.data);
+    free(&connection->origin_buffer);
+    free(connection);
+}
+
+void proxy_pool_destroy()
+{
+    connection *curr, *next;
+    for (curr = connection_pool; curr != NULL; curr = next)
+    {
+        next = curr->next;
+        proxy_destroy(curr);
+    }
+}

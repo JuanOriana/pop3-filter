@@ -168,6 +168,7 @@ selector_finally:
     {
         close(server6);
     }
+    proxy_pool_destroy();
     return ret;
 }
 
