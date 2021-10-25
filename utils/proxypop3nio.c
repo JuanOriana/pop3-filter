@@ -92,6 +92,18 @@ static const struct state_definition client_states[] = {
         .on_departure = NULL,
         .on_read_ready = NULL,
         .on_write_ready = NULL,
+    },
+    {
+        .state = DONE,
+        .on_departure = NULL,
+        .on_read_ready = NULL,
+        .on_write_ready = NULL,
+    },
+    {
+        .state = CONNECTION_ERROR,
+        .on_departure = NULL,
+        .on_read_ready = NULL,
+        .on_write_ready = NULL,
     }};
 
 static int proxy_connect_to_origin();
@@ -208,7 +220,7 @@ int proxy_passive_accept(struct selector_key *key)
 
 struct connection *new_connection(int client_fd, address_representation origin_address_representation)
 {
-    connection *new_connection = malloc(sizeof(connection));
+    connection *new_connection;
 
     struct buffer client_buf;
     uint8_t direct_buff[BUFFSIZE];                                // TODO: Hacer este numero un CTE
