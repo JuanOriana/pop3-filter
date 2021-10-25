@@ -6,5 +6,5 @@
 
 #include "../../utils/include/netutils.h"
 
-int proxy_create_connection(struct selector_key *key);
+int proxy_passive_accept(struct selector_key *key);
 #endif

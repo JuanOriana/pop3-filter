@@ -134,7 +134,7 @@ proxy_connect_to_origin()
     return origin_socket;
 }
 
-int proxy_create_connection(struct selector_key *key)
+int proxy_passive_accept(struct selector_key *key)
 {
     struct sockaddr_storage client_address; // Client address
     // Set length of client address structure (in-out parameter)
@@ -142,15 +142,6 @@ int proxy_create_connection(struct selector_key *key)
     address_representation *origin_representation = (address_representation *)key->data;
     char address_to_string[ADDR_STRING_BUFF_SIZE];
     selector_status ss = SELECTOR_SUCCESS;
-
-    // TODO: ESTA LOGICA VA EN CONNECTING !!!
-    int origin_socket = 0;
-    // int origin_socket = proxy_connect_to_origin();
-    // if (origin_socket < 0)
-    // {
-    //     log(ERROR, "Origin connection failed completely");
-    //     return -1;
-    // }
 
     // Wait for a client to connect
     int client_socket = accept(key->fd, (struct sockaddr *)&client_address, &client_address_len); // TODO : Setear flag de no bloqueante
@@ -199,7 +190,7 @@ int proxy_create_connection(struct selector_key *key)
         log(DEBUG, "Trying to resolve name: %s", origin_representation->addr.fqdn);
     }
 
-    new_connection(client_socket, origin_socket);
+    new_connection(client_socket, *origin_representation);
 
     log(INFO, "Connection accepted");
 
@@ -208,7 +199,7 @@ int proxy_create_connection(struct selector_key *key)
 
 struct connection *new_connection(int client_fd, address_representation origin_address_representation)
 {
-    struct connection *new_connection = malloc;
+    struct connection *new_connection = malloc(sizeof(struct connection));
 
     struct buffer client_buf;
     uint8_t direct_buff[BUFFSIZE];                                // TODO: Hacer este numero un CTE
@@ -242,7 +233,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     stm_init(&new_connection->stm);
 
     //Verifico si es el primero
-    if (connection_pool = NULL)
+    if (connection_pool == NULL)
     {
         connection_pool = new_connection;
     }

@@ -96,7 +96,7 @@ int main(int argc, char *argv[])
     }
 
     const struct fd_handler passive_handler = {
-        .handle_read = proxy_create_connection,
+        .handle_read = proxy_passive_accept,
         .handle_write = NULL,
         .handle_close = NULL, // nada que liberar
     };
