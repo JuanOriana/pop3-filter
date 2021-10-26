@@ -80,6 +80,9 @@ static const struct fd_handler proxy_handler = {
     .handle_block = proxy_block,
 };
 
+unsigned on_read_ready_copying(struct selector_key *key);
+unsigned on_write_ready_copying(struct selector_key *key);
+
 static const struct state_definition client_states[] = {
     {
         .state = RESOLVING,
@@ -95,8 +98,8 @@ static const struct state_definition client_states[] = {
     {
         .state = COPYING,
         .on_departure = NULL,
-        .on_read_ready = NULL,
-        .on_write_ready = NULL,
+        .on_read_ready =on_read_ready_copying,
+        .on_write_ready = on_write_ready_copying,
     },
     {
         .state = DONE,
@@ -197,14 +200,7 @@ int proxy_passive_accept(struct selector_key *key)
         return -1;
     }
 
-    ss = selector_register(key->s, client_socket, &proxy_handler, OP_NOOP, NULL);
-    if (ss != SELECTOR_SUCCESS)
-    {
-        log(ERROR, "Selector error register %s ", selector_error(ss));
-        close(client_socket);
-        return -1;
-        // More checks
-    }
+  
 
     if (origin_representation->type != ADDR_DOMAIN)
     {
@@ -217,6 +213,15 @@ int proxy_passive_accept(struct selector_key *key)
     else
     {
         log(DEBUG, "Trying to resolve name: %s", origin_representation->addr.fqdn);
+    }
+
+      ss = selector_register(key->s, client_socket, &proxy_handler, OP_READ, NULL); // DEBERIA PONERSE COMO DATA LA CONEXION PERO FALLA 
+    if (ss != SELECTOR_SUCCESS)
+    {
+        log(ERROR, "Selector error register %s ", selector_error(ss));
+        close(client_socket);
+        return -1;
+        // More checks
     }
 
     log(INFO, "Connection accepted");
@@ -354,9 +359,13 @@ static unsigned on_connection_ready(struct selector_key *key)
 static void
 proxy_read(struct selector_key *key)
 {
-    printf("Llego al read  con fd %d y data %s", key->fd, (char *)key->data);
-    // struct state_machine *stm   = &ATTACHMENT(key)->stm;
-    // const enum socks_v5state st = stm_handler_read(stm, key);
+    // printf("Llego al read  con fd %d ", key->fd);
+    if(key->data == NULL){
+        log(DEBUG,"DATA ON KEY NULL");
+        return;
+    }
+    struct state_machine *stm   = &ATTACHMENT(key)->stm;
+    stm_handler_read(stm, key);
 
     // if(ERROR == st || DONE == st) {
     //     socksv5_done(key);
@@ -504,4 +513,102 @@ void connection_pool_destroy()
         next = curr->next;
         connection_destroy(curr);
     }
+}
+
+
+/////////////////// FUNCIONES DE EL ESTADO COPYING ////////////////////////////////////////
+
+void   on_departure_copying(const unsigned state, struct selector_key *key){
+    printf("ON DEPARTURE");
+    connection_destroy(ATTACHMENT(key));
+}
+
+// Habria que hacer el manejo de dessetear el FD 
+unsigned on_read_ready_copying(struct selector_key *key){
+    struct connection * connection_to_read = ATTACHMENT(key);
+    int fd_to_read = key->fd;
+    buffer * buffer_to_write;
+
+
+    if(fd_to_read == connection_to_read->origin_fd){
+        buffer_to_write = (connection_to_read->origin_buffer);
+       log(DEBUG,"Reading from origin fd.");
+    }else if(fd_to_read == connection_to_read->client_fd){
+        buffer_to_write = (connection_to_read->client_buffer);
+        log(DEBUG,"Reading from client fd.");
+    }else{
+        log(ERROR,"Error when reading in copying state. Bad file descriptor");
+        return -1;
+    }
+
+    if(buffer_can_write(buffer_to_write)){
+        char  buffer[BUFFSIZE] = {0};
+        size_t n = read(fd_to_read,buffer,BUFFSIZE);  // Chequear si es correcto el uso de read;      
+        buffer_write_adv(buffer_to_write,&n);
+        uint8_t * ptr = buffer_write_ptr(buffer_to_write,&n);
+        memcpy(ptr,buffer,n);
+        return n;
+    }else{
+        log(ERROR,"Can't write on buffer in copying read.");
+    }
+
+    return -1;
+}
+
+
+
+// Habria que hacer el manejo de dessetear el FD 
+unsigned on_write_ready_copying(struct selector_key *key){
+    struct connection * connection = ATTACHMENT(key);
+    int fd_to_write = key->fd;
+    buffer * buffer_to_read;
+    buffer * buffer_to_write;
+
+
+    if(fd_to_write == connection->origin_fd){
+        buffer_to_read = connection->client_buffer;
+        buffer_to_write = connection->origin_buffer;
+        log(DEBUG,"Writing to origin buffer.");
+    }else if(fd_to_write == connection->client_fd){
+        buffer_to_read = connection->origin_buffer;
+        buffer_to_write = connection->client_buffer;
+        log(DEBUG,"Writing to client buffer.");
+    }else{
+        log(ERROR,"Error when writing in copying state. Bad file descriptor");
+        return -1;
+    }
+
+    if(buffer_can_read(buffer_to_read) && buffer_can_write(buffer_to_write)){
+        size_t wbytes =0, rbytes = 0;
+        uint8_t * ptr_write,ptr_read;
+
+        ptr_read = buffer_read_ptr(buffer_to_read,&rbytes);
+
+        ptr_write = buffer_write_ptr(buffer_to_write,&wbytes);
+
+        // Va a haber un limitante para escribir.
+        // Si rbytes < wbytes, voy a poder escribir todo. 
+        // Si wbytes < rbytes, voy a poder escribir una parte 
+        size_t limited_buffer_size = (wbytes>rbytes)? rbytes:wbytes;
+        char * aux_buffer = malloc(limited_buffer_size); 
+
+        log(DEBUG,"Writing %d bytes to buffer",limited_buffer_size);
+
+        for(size_t i=0; i <limited_buffer_size ;i++){
+            aux_buffer[i]=buffer_read(buffer_to_read);      // Ver si corresponde que cuando termino de leer resetear el buff
+        }
+
+        buffer_read_adv(buffer_to_read,&rbytes);
+
+        memcpy(ptr_write,aux_buffer,limited_buffer_size);
+        buffer_write_adv(buffer_to_write,&wbytes);
+        free(aux_buffer);
+
+        log(DEBUG, "Writing succeed",limited_buffer_size);
+
+    }else{
+        log(DEBUG,"Cant't write");
+    }
+
+
 }
