@@ -125,43 +125,6 @@ static unsigned start_connection_with_origin(fd_selector selector, connection *c
 static void *dns_resolve_blocking(void *data);
 static unsigned connect_to_host(fd_selector selector, struct connection *proxy);
 
-static int
-proxy_connect_to_origin()
-{
-    int origin_socket = -1, opt;
-    struct sockaddr_in origin_addr;
-    if ((origin_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        log(ERROR, "Origin: Socket failed");
-        return -1;
-    }
-    // set master socket to allow multiple connections , this is just a good habit, it will work without this
-    if (setsockopt(origin_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0)
-    {
-        log(ERROR, "Origin: set socket options failed");
-        return -1;
-    }
-
-    origin_addr.sin_family = AF_INET;
-    origin_addr.sin_port = htons(pop3_proxy_args.origin_port);
-
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, "127.0.0.1", &origin_addr.sin_addr) <= 0)
-    {
-        log(ERROR, "Origin: Invalid address/ Address not supported \n");
-        return -1;
-    }
-
-    if (connect(origin_socket, (struct sockaddr *)&origin_addr, sizeof(origin_addr)) < 0)
-    {
-        log(ERROR, "Origin: Connection failed \n");
-        return -1;
-    }
-
-    log(INFO, "origin: %d", origin_socket);
-    return origin_socket;
-}
-
 int proxy_passive_accept(struct selector_key *key)
 {
     struct sockaddr_storage client_address; // Client address
@@ -234,8 +197,6 @@ int proxy_passive_accept(struct selector_key *key)
             // TODO: manejar el error de que no se haya podido crear el thread
         }
     }
-
-    log(INFO, "Connection accepted");
 
     return client_socket;
 }
