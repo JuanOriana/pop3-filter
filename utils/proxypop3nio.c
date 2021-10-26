@@ -23,6 +23,7 @@
 #define MAX_SOCKETS 30
 #define BUFFSIZE 1024
 #define ADDR_STRING_BUFF_SIZE 64
+#define MAX_POOL 50
 
 typedef struct connection
 {
@@ -31,12 +32,15 @@ typedef struct connection
 
     struct state_machine stm;
 
-    buffer client_buffer;
-    buffer origin_buffer;
+    buffer *client_buffer;
+    buffer *origin_buffer;
 
     address_representation origin_address_representation;
     /** Resolución de la dirección del origin server. */
     struct sockaddr_in *origin_resolution;
+
+    /** Cantidad de referencias a este objeto. si es uno se debe destruir. */
+    unsigned references;
 
     struct connection *next;
 } connection;
@@ -62,6 +66,7 @@ typedef struct state_definition state_definition;
  */
 
 struct connection *connection_pool;
+int connection_pool_size = 0;
 extern struct pop3_proxy_args pop3_proxy_args;
 
 static void proxy_read(struct selector_key *key);
@@ -108,7 +113,8 @@ static const struct state_definition client_states[] = {
 
 static int proxy_connect_to_origin();
 struct connection *new_connection(int client_fd, address_representation origin_address_representation);
-static void proxy_destroy(connection *connection);
+static void connection_destroy(connection *connection);
+static unsigned start_connection_with_origin(fd_selector selector, connection *connection);
 
 static int
 proxy_connect_to_origin()
@@ -195,7 +201,6 @@ int proxy_passive_accept(struct selector_key *key)
     if (ss != SELECTOR_SUCCESS)
     {
         log(ERROR, "Selector error register %s ", selector_error(ss));
-        proxy_destroy(new_connection_instance);
         close(client_socket);
         return -1;
         // More checks
@@ -204,6 +209,7 @@ int proxy_passive_accept(struct selector_key *key)
     if (origin_representation->type != ADDR_DOMAIN)
     {
         log(DEBUG, "No need to resolve name");
+        new_connection_instance->stm.initial = start_connection_with_origin(key->s, new_connection_instance);
         //new_connection_instance->stm.initial = connecting(key->mux, proxy);
         //LOGGING LOGIC
         //SETEO EL ESTADO DE LA STATE MACHINE EN CONNECTING (ME CONECTO DE UNA)
@@ -222,23 +228,30 @@ struct connection *new_connection(int client_fd, address_representation origin_a
 {
     connection *new_connection;
 
-    struct buffer client_buf;
-    uint8_t direct_buff[BUFFSIZE];                                // TODO: Hacer este numero un CTE
-    buffer_init(&client_buf, N_BUFFER(direct_buff), direct_buff); // Errores?
+    buffer *client_buf, *origin_buf;
+    uint8_t direct_buff[BUFFSIZE], direct_buff_origin[BUFFSIZE]; // TODO: Hacer este numero un CTE
 
-    struct buffer origin_buf;
-    uint8_t direct_buff_origin[BUFFSIZE];                                       // TODO: Hacer este numero un CTE
-    buffer_init(&origin_buf, N_BUFFER(direct_buff_origin), direct_buff_origin); // Errores?
-
-    new_connection = malloc(sizeof(*new_connection));
-
-    if (new_connection == NULL)
+    //Verifico si es el primero
+    if (connection_pool == NULL)
     {
-        free(client_buf.data);
-        free(&client_buf);
-        free(origin_buf.data);
-        free(&origin_buf);
-        return NULL;
+        new_connection = malloc(sizeof(*new_connection)); // TODO CHECK NULL
+        if (new_connection == NULL)
+        {
+            return NULL;
+        }
+        client_buf = malloc(sizeof(buffer));
+        buffer_init(client_buf, N_BUFFER(direct_buff), direct_buff); // Errores?
+        origin_buf = malloc(sizeof(buffer));
+        buffer_init(origin_buf, N_BUFFER(direct_buff_origin), direct_buff_origin); // Errores?
+    }
+    else
+    {
+        new_connection = connection_pool;
+        connection_pool = connection_pool->next;
+        client_buf = new_connection->client_buffer;
+        origin_buf = new_connection->origin_buffer;
+        buffer_reset(client_buf);
+        buffer_reset(origin_buf);
     }
 
     new_connection->client_fd = client_fd;
@@ -247,24 +260,95 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     new_connection->origin_buffer = origin_buf;
     new_connection->origin_address_representation = origin_address_representation;
     new_connection->next = NULL;
+    new_connection->references = 1;
 
     new_connection->stm.initial = RESOLVING;
     new_connection->stm.max_state = CONNECTION_ERROR;
     new_connection->stm.states = client_states;
     stm_init(&new_connection->stm);
 
-    //Verifico si es el primero
-    if (connection_pool == NULL)
+    return new_connection;
+}
+
+/** 
+ * Intenta establecer una conexión con el origin server. 
+ */
+static unsigned start_connection_with_origin(fd_selector selector, connection *connection)
+{
+    address_representation origin_address_representation = connection->origin_address_representation;
+
+    connection->origin_fd = socket(origin_address_representation.domain, SOCK_STREAM, IPPROTO_TCP);
+
+    if (connection->origin_fd == -1)
+        goto finally;
+    if (set_non_blocking(connection->origin_fd) == -1)
+        goto finally;
+
+    if (connect(connection->origin_fd, (const struct sockaddr *)&origin_address_representation.addr.address_storage,
+                origin_address_representation.addr_len) == -1)
     {
-        connection_pool = new_connection;
+        if (errno == EINPROGRESS)
+        {
+            log(DEBUG, "In progress");
+            /**
+             * Polleando cliente
+             */
+            selector_status ss = selector_set_interest(selector, connection->client_fd, OP_NOOP);
+            if (ss != SELECTOR_SUCCESS)
+                goto finally;
+
+            /** Esperamos la conexion en el nuevo socket. */
+            ss = selector_register(selector, connection->origin_fd, &proxy_handler, OP_WRITE, connection);
+            if (ss != SELECTOR_SUCCESS)
+                goto finally;
+
+            connection->references += 1;
+        }
     }
     else
     {
-        connection_pool->next = new_connection;
+        /**
+         * Estamos conectados sin esperar... no parece posible
+         * Saltaríamos directamente a COPY.
+         */
+        log(DEBUG, "Not waiting ???");
     }
+    return CONNECTING;
 
-    //TODO: CODEAR EL DESTROY DE UNA CONEXION // TODAS LAS CONEXIONES
-    return new_connection;
+finally:
+    log(ERROR, "Cant connect to origin server.");
+    return ERROR;
+}
+
+static unsigned on_connection_ready(struct selector_key *key)
+{
+    connection *connection = ATTACHMENT(key);
+    int error;
+    socklen_t len = sizeof(error);
+    unsigned ret = ERROR;
+    char buff[ADDR_STRING_BUFF_SIZE];
+
+    if (getsockopt(key->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0)
+        error = 1;
+
+    if (error != 0)
+    {
+        log(ERROR, "Problem connecting to origin server in on_connection-ready");
+        if (SELECTOR_SUCCESS == selector_set_interest(key->s, connection->client_fd, OP_WRITE))
+            ret = ERROR;
+        else
+            ret = ERROR;
+    }
+    else if (SELECTOR_SUCCESS == selector_set_interest(key->s, key->fd, OP_READ))
+    {
+        struct sockaddr_storage *origin = &connection->origin_address_representation.addr.address_storage;
+        //sockaddrToString(connection->session.origin_string, ADDR_STRING_BUFF_SIZE, origin);
+        sockaddr_to_human(buff, ADDR_STRING_BUFF_SIZE, origin);
+        log(INFO, "Connection established. Client Address: %s; Origin Address: %s.", "ACA VA EL CLIENT", buff);
+        ret = ERROR;
+        //deberia ret = HELLO;
+    }
+    return ret;
 }
 
 static void
@@ -374,22 +458,50 @@ proxy_close(struct selector_key *key)
 /**
  *  Destruye y libera un proxyPopv3
  */
-static void proxy_destroy(connection *connection)
+static void connection_destroy(connection *connection)
 {
     //CLOSE SOCKETS?
-    free(&connection->client_buffer.data);
+    free(&connection->client_buffer->data);
     free(&connection->client_buffer);
-    free(&connection->origin_buffer.data);
+    free(&connection->origin_buffer->data);
     free(&connection->origin_buffer);
     free(connection);
 }
 
-void proxy_pool_destroy()
+static void connection_destroy_referenced(connection *connection)
+{
+    if (connection == NULL)
+    {
+        // nada para hacer
+    }
+    else if (connection->references == 1)
+    {
+        if (connection != NULL)
+        {
+            if (connection_pool_size < MAX_POOL)
+            {
+                connection->next = connection_pool;
+                connection_pool = connection;
+                connection_pool_size++;
+            }
+            else
+            {
+                connection_destroy(connection);
+            }
+        }
+    }
+    else
+    {
+        connection->references -= 1;
+    }
+}
+
+void connection_pool_destroy()
 {
     connection *curr, *next;
     for (curr = connection_pool; curr != NULL; curr = next)
     {
         next = curr->next;
-        proxy_destroy(curr);
+        connection_destroy(curr);
     }
 }
