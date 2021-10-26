@@ -321,7 +321,7 @@ static unsigned on_connection_ready(struct selector_key *key)
         struct sockaddr_storage *origin = &connection->origin_address_representation.addr.address_storage;
         sockaddr_to_human(connection->origin_addr_humanized, ADDR_STRING_BUFF_SIZE, origin);
         log(INFO, "Connection established. Client Address: %s; Origin Address: %s.", connection->client_addr_humanized, connection->origin_addr_humanized);
-        ret = ERROR;
+        ret = COPYING;
         // deberia ret = HELLO;
     }
     return ret;
