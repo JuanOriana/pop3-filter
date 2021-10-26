@@ -235,15 +235,6 @@ int proxy_passive_accept(struct selector_key *key)
         }
     }
 
-    ss = selector_register(key->s, client_socket, &proxy_handler, OP_READ, NULL); // DEBERIA PONERSE COMO DATA LA CONEXION PERO FALLA
-    if (ss != SELECTOR_SUCCESS)
-    {
-        log(ERROR, "Selector error register %s ", selector_error(ss));
-        close(client_socket);
-        return -1;
-        // More checks
-    }
-
     log(INFO, "Connection accepted");
 
     return client_socket;
