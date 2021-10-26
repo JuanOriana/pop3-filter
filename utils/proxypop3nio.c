@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -115,6 +116,8 @@ static int proxy_connect_to_origin();
 struct connection *new_connection(int client_fd, address_representation origin_address_representation);
 static void connection_destroy(connection *connection);
 static unsigned start_connection_with_origin(fd_selector selector, connection *connection);
+static void *dns_resolve_blocking(void *data);
+static unsigned connect_to_host(fd_selector selector, struct connection *proxy);
 
 static int
 proxy_connect_to_origin()
@@ -180,7 +183,7 @@ int proxy_passive_accept(struct selector_key *key)
     sockaddr_to_human(address_to_string, ADDR_STRING_BUFF_SIZE, &client_address);
     log(INFO, "Accepting connection from: %s", address_to_string);
 
-    //CREATE CONENCITON STATE!!!! WITH CLIENT_SOCKET origin_representation and buffer
+    // CREATE CONENCITON STATE!!!! WITH CLIENT_SOCKET origin_representation and buffer
 
     // TODO: Borrar este handler por proxy_handler
     // const struct fd_handler active_handler = {
@@ -210,13 +213,30 @@ int proxy_passive_accept(struct selector_key *key)
     {
         log(DEBUG, "No need to resolve name");
         new_connection_instance->stm.initial = start_connection_with_origin(key->s, new_connection_instance);
-        //new_connection_instance->stm.initial = connecting(key->mux, proxy);
-        //LOGGING LOGIC
-        //SETEO EL ESTADO DE LA STATE MACHINE EN CONNECTING (ME CONECTO DE UNA)
+        // new_connection_instance->stm.initial = connecting(key->mux, proxy);
+        // LOGGING LOGIC
+        // SETEO EL ESTADO DE LA STATE MACHINE EN CONNECTING (ME CONECTO DE UNA)
     }
     else
     {
         log(DEBUG, "Trying to resolve name: %s", origin_representation->addr.fqdn);
+
+        struct selector_key *blocking_key = malloc(sizeof(*blocking_key));
+
+        if (key == NULL)
+        {
+            // TODO: manejar el error de malloc
+        }
+
+        blocking_key->s = key->s;
+        blocking_key->fd = client_socket;
+        blocking_key->data = new_connection_instance;
+
+        pthread_t thread_id;
+        if (pthread_create(&thread_id, 0, dns_resolve_blocking, blocking_key) == -1)
+        {
+            // TODO: manejar el error de que no se haya podido crear el thread
+        }
     }
 
     log(INFO, "Connection accepted");
@@ -231,7 +251,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     buffer *client_buf, *origin_buf;
     uint8_t direct_buff[BUFFSIZE], direct_buff_origin[BUFFSIZE]; // TODO: Hacer este numero un CTE
 
-    //Verifico si es el primero
+    // Verifico si es el primero
     if (connection_pool == NULL)
     {
         new_connection = malloc(sizeof(*new_connection)); // TODO CHECK NULL
@@ -270,8 +290,8 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     return new_connection;
 }
 
-/** 
- * Intenta establecer una conexión con el origin server. 
+/**
+ * Intenta establecer una conexión con el origin server.
  */
 static unsigned start_connection_with_origin(fd_selector selector, connection *connection)
 {
@@ -342,11 +362,11 @@ static unsigned on_connection_ready(struct selector_key *key)
     else if (SELECTOR_SUCCESS == selector_set_interest(key->s, key->fd, OP_READ))
     {
         struct sockaddr_storage *origin = &connection->origin_address_representation.addr.address_storage;
-        //sockaddrToString(connection->session.origin_string, ADDR_STRING_BUFF_SIZE, origin);
+        // sockaddrToString(connection->session.origin_string, ADDR_STRING_BUFF_SIZE, origin);
         sockaddr_to_human(buff, ADDR_STRING_BUFF_SIZE, origin);
         log(INFO, "Connection established. Client Address: %s; Origin Address: %s.", "ACA VA EL CLIENT", buff);
         ret = ERROR;
-        //deberia ret = HELLO;
+        // deberia ret = HELLO;
     }
     return ret;
 }
@@ -396,32 +416,32 @@ proxy_close(struct selector_key *key)
 // RESOLVING
 
 //// resolucion del dominio de forma bloqueante, una vez terminada, el selector es notificado
-// static void *dns_resolve_blocking(void *data)
-// {
-//     struct selector_key key = (struct selector_key *)data;
-//     struct connection *proxy = ATTACHMENT(key);
+static void *dns_resolve_blocking(void *data)
+{
+    struct selector_key *key = (struct selector_key *)data;
+    struct connection *proxy = ATTACHMENT(key);
 
-//     pthread_detach(pthread_self()); // REV
-//     proxy->origin_resolution = 0;
-//     struct addrinfo hints = {
-//         .ai_family = AF_UNSPEC,
-//         /** Permite IPv4 o IPv6. */
-//         .ai_socktype = SOCK_STREAM,
-//         .ai_flags = AI_PASSIVE,
-//         .ai_protocol = 0,
-//         .ai_canonname = NULL,
-//         .ai_addr = NULL,
-//         .ai_next = NULL,
-//     };
+    pthread_detach(pthread_self()); // REV
+    proxy->origin_resolution = 0;
+    struct addrinfo hints = {
+        .ai_family = AF_UNSPEC,
+        /** Permite IPv4 o IPv6. */
+        .ai_socktype = SOCK_STREAM,
+        .ai_flags = AI_PASSIVE,
+        .ai_protocol = 0,
+        .ai_canonname = NULL,
+        .ai_addr = NULL,
+        .ai_next = NULL,
+    };
 
-//     char buff[7];
-//     snprintf(buff, sizeof(buff), "%d", proxy->origin_address_information.port);
-//     getaddrinfo(proxy->origin_address_information.addr.fqdn, buff, &hints, &proxy->origin_resolution);
-//     selector_notify_block(key->s, key->fd);
+    char buff[7];
+    snprintf(buff, sizeof(buff), "%d", proxy->origin_address_representation.port);
+    getaddrinfo(proxy->origin_address_representation.addr.fqdn, buff, &hints, &proxy->origin_resolution);
+    selector_notify_block(key->s, key->fd);
 
-//     free(data);
-//     return 0;
-// }
+    free(data);
+    return 0;
+}
 
 // //// on_block_ready
 // static unsigned dns_resolve_done(struct selector_key key)
@@ -460,7 +480,7 @@ proxy_close(struct selector_key *key)
  */
 static void connection_destroy(connection *connection)
 {
-    //CLOSE SOCKETS?
+    // CLOSE SOCKETS?
     free(&connection->client_buffer->data);
     free(&connection->client_buffer);
     free(&connection->origin_buffer->data);
