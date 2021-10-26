@@ -86,6 +86,8 @@ static const struct fd_handler proxy_handler = {
 
 unsigned on_read_ready_copying(struct selector_key *key);
 unsigned on_write_ready_copying(struct selector_key *key);
+static void connection_destroy_referenced(connection *connection);
+static void connection_destroy(connection *connection);
 
 static const struct state_definition client_states[] = {
     {
@@ -347,29 +349,33 @@ proxy_read(struct selector_key *key)
 static void
 proxy_write(struct selector_key *key)
 {
-    // struct state_machine *stm   = &ATTACHMENT(key)->stm;
-    // const enum socks_v5state st = stm_handler_write(stm, key);
+    struct state_machine *stm = &ATTACHMENT(key)->stm;
+    const proxy_state st = stm_handler_write(stm, key);
 
-    // if(ERROR == st || DONE == st) {
-    //     socksv5_done(key);
-    // }
+    if (st == ERROR || st == DONE)
+    {
+        //TODO:
+        // socksv5_done(key);
+    }
 }
 
 static void
 proxy_block(struct selector_key *key)
 {
-    // struct state_machine *stm   = &ATTACHMENT(key)->stm;
-    // const enum socks_v5state st = stm_handler_block(stm, key);
+    struct state_machine *stm = &ATTACHMENT(key)->stm;
+    const proxy_state st = stm_handler_block(stm, key);
 
-    // if(ERROR == st || DONE == st) {
-    //     socksv5_done(key);
-    // }
+    if (st == ERROR || st == DONE)
+    {
+        //TODO:
+        // socksv5_done(key);
+    }
 }
 
 static void
 proxy_close(struct selector_key *key)
 {
-    // socks5_destroy(ATTACHMENT(key));
+    connection_destroy_referenced(ATTACHMENT(key));
 }
 
 ///////////////////////// FUNCIONES DE STATE_DEFINITION /////////////////////////
