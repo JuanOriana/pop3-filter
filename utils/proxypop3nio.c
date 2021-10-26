@@ -30,6 +30,9 @@ typedef struct connection
     int client_fd;
     int origin_fd;
 
+    char client_addr_humanized[ADDR_STRING_BUFF_SIZE];
+    char origin_addr_humanized[ADDR_STRING_BUFF_SIZE];
+
     struct state_machine stm;
 
     buffer *client_buffer;
@@ -159,7 +162,6 @@ int proxy_passive_accept(struct selector_key *key)
     // Set length of client address structure (in-out parameter)
     socklen_t client_address_len = sizeof(client_address);
     address_representation *origin_representation = (address_representation *)key->data;
-    char address_to_string[ADDR_STRING_BUFF_SIZE];
     selector_status ss = SELECTOR_SUCCESS;
 
     // Wait for a client to connect
@@ -177,18 +179,6 @@ int proxy_passive_accept(struct selector_key *key)
         return -1;
     }
 
-    sockaddr_to_human(address_to_string, ADDR_STRING_BUFF_SIZE, &client_address);
-    log(INFO, "Accepting connection from: %s", address_to_string);
-
-    //CREATE CONENCITON STATE!!!! WITH CLIENT_SOCKET origin_representation and buffer
-
-    // TODO: Borrar este handler por proxy_handler
-    // const struct fd_handler active_handler = {
-    //     .handle_read = NULL,
-    //     .handle_write = NULL,
-    //     .handle_close = NULL, // nada que liberar
-    // };
-
     connection *new_connection_instance = new_connection(client_socket, *origin_representation);
     if (new_connection_instance == NULL)
     {
@@ -196,6 +186,9 @@ int proxy_passive_accept(struct selector_key *key)
         close(client_socket);
         return -1;
     }
+
+    sockaddr_to_human(new_connection_instance->client_addr_humanized, ADDR_STRING_BUFF_SIZE, &client_address);
+    log(INFO, "Accepting connection from: %s", new_connection_instance->client_addr_humanized);
 
     ss = selector_register(key->s, client_socket, &proxy_handler, OP_NOOP, NULL);
     if (ss != SELECTOR_SUCCESS)
@@ -342,9 +335,8 @@ static unsigned on_connection_ready(struct selector_key *key)
     else if (SELECTOR_SUCCESS == selector_set_interest(key->s, key->fd, OP_READ))
     {
         struct sockaddr_storage *origin = &connection->origin_address_representation.addr.address_storage;
-        //sockaddrToString(connection->session.origin_string, ADDR_STRING_BUFF_SIZE, origin);
-        sockaddr_to_human(buff, ADDR_STRING_BUFF_SIZE, origin);
-        log(INFO, "Connection established. Client Address: %s; Origin Address: %s.", "ACA VA EL CLIENT", buff);
+        sockaddr_to_human(connection->origin_addr_humanized, ADDR_STRING_BUFF_SIZE, origin);
+        log(INFO, "Connection established. Client Address: %s; Origin Address: %s.", connection->client_addr_humanized, connection->origin_addr_humanized);
         ret = ERROR;
         //deberia ret = HELLO;
     }
