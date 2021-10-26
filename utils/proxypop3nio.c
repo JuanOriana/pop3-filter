@@ -88,6 +88,7 @@ unsigned on_read_ready_copying(struct selector_key *key);
 unsigned on_write_ready_copying(struct selector_key *key);
 static void connection_destroy_referenced(connection *connection);
 static void connection_destroy(connection *connection);
+static unsigned on_connection_ready(struct selector_key *key);
 
 static const struct state_definition client_states[] = {
     {
@@ -98,8 +99,7 @@ static const struct state_definition client_states[] = {
     },
     {
         .state = CONNECTING,
-        .on_arrival = NULL, // crear la estructura de la conexion
-        .on_block_ready = NULL,
+        .on_write_ready = on_connection_ready,
     },
     {
         .state = COPYING,
@@ -161,7 +161,7 @@ int proxy_passive_accept(struct selector_key *key)
     sockaddr_to_human(new_connection_instance->client_addr_humanized, ADDR_STRING_BUFF_SIZE, &client_address);
     log(INFO, "Accepting connection from: %s", new_connection_instance->client_addr_humanized);
 
-    ss = selector_register(key->s, client_socket, &proxy_handler, OP_NOOP, NULL);
+    ss = selector_register(key->s, client_socket, &proxy_handler, OP_NOOP, new_connection_instance);
     if (ss != SELECTOR_SUCCESS)
     {
         log(ERROR, "Selector error register %s ", selector_error(ss));
@@ -208,7 +208,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     connection *new_connection;
 
     buffer *client_buf, *origin_buf;
-    uint8_t direct_buff[BUFFSIZE], direct_buff_origin[BUFFSIZE]; // TODO: Hacer este numero un CTE
+    uint8_t  * direct_buff,* direct_buff_origin;
 
     // Verifico si es el primero
     if (connection_pool == NULL)
@@ -218,10 +218,12 @@ struct connection *new_connection(int client_fd, address_representation origin_a
         {
             return NULL;
         }
+        direct_buff = malloc(BUFFSIZE);
+        direct_buff_origin = malloc(BUFFSIZE);
         client_buf = malloc(sizeof(buffer));
-        buffer_init(client_buf, N_BUFFER(direct_buff), direct_buff); // Errores?
+        buffer_init(client_buf, BUFFSIZE, direct_buff); // Errores?
         origin_buf = malloc(sizeof(buffer));
-        buffer_init(origin_buf, N_BUFFER(direct_buff_origin), direct_buff_origin); // Errores?
+        buffer_init(origin_buf, BUFFSIZE, direct_buff_origin); // Errores?
     }
     else
     {
@@ -332,8 +334,7 @@ static unsigned on_connection_ready(struct selector_key *key)
 static void
 proxy_read(struct selector_key *key)
 {
-    // printf("Llego al read  con fd %d ", key->fd);
-    if (key->data == NULL)
+    if (key == NULL || key->data == NULL)
     {
         log(DEBUG, "DATA ON KEY NULL");
         return;
@@ -350,8 +351,9 @@ static void
 proxy_write(struct selector_key *key)
 {
     struct state_machine *stm = &ATTACHMENT(key)->stm;
+    log(DEBUG,"ON WRITE 1");
     const proxy_state st = stm_handler_write(stm, key);
-
+    log(DEBUG,"ON WRITE 2");
     if (st == ERROR || st == DONE)
     {
         //TODO:
@@ -499,6 +501,7 @@ void on_departure_copying(const unsigned state, struct selector_key *key)
 {
     printf("ON DEPARTURE");
     connection_destroy(ATTACHMENT(key));
+    return DONE;
 }
 
 // Habria que hacer el manejo de dessetear el FD
@@ -521,84 +524,80 @@ unsigned on_read_ready_copying(struct selector_key *key)
     else
     {
         log(ERROR, "Error when reading in copying state. Bad file descriptor");
-        return -1;
+        return CONNECTION_ERROR;
     }
 
-    if (buffer_can_write(buffer_to_write))
+    size_t n=0;
+    uint8_t *ptr = buffer_write_ptr(buffer_to_write, &n);
+    size_t readed = recv(fd_to_read, ptr, n,0); 
+    log(DEBUG,"N VALUE = %d",(int)n);
+
+    if (readed>0)
     {
-        char buffer[BUFFSIZE] = {0};
-        size_t n = read(fd_to_read, buffer, BUFFSIZE); // Chequear si es correcto el uso de read;
-        buffer_write_adv(buffer_to_write, &n);
-        uint8_t *ptr = buffer_write_ptr(buffer_to_write, &n);
-        memcpy(ptr, buffer, n);
-        return n;
+        buffer_write_adv(buffer_to_write, readed);
+        return COPYING;
     }
     else
     {
         log(ERROR, "Can't write on buffer in copying read.");
     }
 
-    return -1;
+    return CONNECTION_ERROR; 
 }
-
-// Habria que hacer el manejo de dessetear el FD
 unsigned on_write_ready_copying(struct selector_key *key)
 {
     struct connection *connection = ATTACHMENT(key);
     int fd_to_write = key->fd;
     buffer *buffer_to_read;
-    buffer *buffer_to_write;
 
     if (fd_to_write == connection->origin_fd)
     {
         buffer_to_read = connection->client_buffer;
-        buffer_to_write = connection->origin_buffer;
-        log(DEBUG, "Writing to origin buffer.");
+        log(DEBUG, "Writing to origin.");
     }
     else if (fd_to_write == connection->client_fd)
     {
         buffer_to_read = connection->origin_buffer;
-        buffer_to_write = connection->client_buffer;
-        log(DEBUG, "Writing to client buffer.");
+        log(DEBUG, "Writing to client.");
     }
     else
     {
         log(ERROR, "Error when writing in copying state. Bad file descriptor");
-        return -1;
+        return CONNECTION_ERROR;
     }
 
-    if (buffer_can_read(buffer_to_read) && buffer_can_write(buffer_to_write))
+    if (buffer_can_read(buffer_to_read))
     {
-        size_t wbytes = 0, rbytes = 0;
-        uint8_t *ptr_write, ptr_read;
+        size_t rbytes = 0;
+        uint8_t * ptr_read;
 
         ptr_read = buffer_read_ptr(buffer_to_read, &rbytes);
 
-        ptr_write = buffer_write_ptr(buffer_to_write, &wbytes);
+        char *aux_buffer = malloc(rbytes);
 
-        // Va a haber un limitante para escribir.
-        // Si rbytes < wbytes, voy a poder escribir todo.
-        // Si wbytes < rbytes, voy a poder escribir una parte
-        size_t limited_buffer_size = (wbytes > rbytes) ? rbytes : wbytes;
-        char *aux_buffer = malloc(limited_buffer_size);
+        log(DEBUG, "Writing %d bytes to buffer", rbytes);
 
-        log(DEBUG, "Writing %d bytes to buffer", limited_buffer_size);
-
-        for (size_t i = 0; i < limited_buffer_size; i++)
+        for (size_t i = 0; i < rbytes; i++)
         {
-            aux_buffer[i] = buffer_read(buffer_to_read); // Ver si corresponde que cuando termino de leer resetear el buff
+            aux_buffer[i] = buffer_read(buffer_to_read); 
         }
 
-        buffer_read_adv(buffer_to_read, &rbytes);
+        errno =0;
+        int bytes_sent = send(fd_to_write,aux_buffer,rbytes,0); // Not blocking ver  NO_MSGSINGAL 
 
-        memcpy(ptr_write, aux_buffer, limited_buffer_size);
-        buffer_write_adv(buffer_to_write, &wbytes);
+        if(bytes_sent < 0){
+            log(ERROR, "Cant send %d bytes to %d fd. Errno value = %d ",rbytes,fd_to_write,errno);
+        }
+        
         free(aux_buffer);
 
-        log(DEBUG, "Writing succeed", limited_buffer_size);
+        log(DEBUG, "Writing succeed");
+        return COPYING;
     }
     else
     {
         log(DEBUG, "Cant't write");
+        return CONNECTION_ERROR;
     }
+
 }
