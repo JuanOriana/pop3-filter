@@ -26,6 +26,18 @@
 #define ADDR_STRING_BUFF_SIZE 64
 #define MAX_POOL 50
 
+struct copy
+{
+    // El file descriptor del otro.
+    int *fd;
+
+    buffer  *read_buffer,*write_buffer;
+
+    fd_interest duplex;
+
+    struct copy *other;
+};
+
 typedef struct connection
 {
     int client_fd;
@@ -36,8 +48,12 @@ typedef struct connection
 
     struct state_machine stm;
 
-    buffer *client_buffer;
-    buffer *origin_buffer;
+    buffer *read_buffer;
+    buffer *write_buffer;
+
+    struct copy copy_client;
+
+    struct copy copy_origin;
 
     address_representation origin_address_representation;
     /** Resolución de la dirección del origin server. */
@@ -89,6 +105,7 @@ unsigned on_write_ready_copying(struct selector_key *key);
 static void connection_destroy_referenced(connection *connection);
 static void connection_destroy(connection *connection);
 static unsigned on_connection_ready(struct selector_key *key);
+static void on_arrival_copying(const unsigned state, struct selector_key * key);
 
 static const struct state_definition client_states[] = {
     {
@@ -103,6 +120,7 @@ static const struct state_definition client_states[] = {
     },
     {
         .state = COPYING,
+        .on_arrival = on_arrival_copying,
         .on_departure = NULL,
         .on_read_ready = on_read_ready_copying,
         .on_write_ready = on_write_ready_copying,
@@ -207,7 +225,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
 {
     connection *new_connection;
 
-    buffer *client_buf, *origin_buf;
+    buffer *read_buf, *write_buf;
     uint8_t  * direct_buff,* direct_buff_origin;
 
     // Verifico si es el primero
@@ -220,25 +238,25 @@ struct connection *new_connection(int client_fd, address_representation origin_a
         }
         direct_buff = malloc(BUFFSIZE);
         direct_buff_origin = malloc(BUFFSIZE);
-        client_buf = malloc(sizeof(buffer));
-        buffer_init(client_buf, BUFFSIZE, direct_buff); // Errores?
-        origin_buf = malloc(sizeof(buffer));
-        buffer_init(origin_buf, BUFFSIZE, direct_buff_origin); // Errores?
+        read_buf = malloc(sizeof(buffer));
+        buffer_init(read_buf, BUFFSIZE, direct_buff); // Errores?
+        write_buf = malloc(sizeof(buffer));
+        buffer_init(write_buf, BUFFSIZE, direct_buff_origin); // Errores?
     }
     else
     {
         new_connection = connection_pool;
         connection_pool = connection_pool->next;
-        client_buf = new_connection->client_buffer;
-        origin_buf = new_connection->origin_buffer;
-        buffer_reset(client_buf);
-        buffer_reset(origin_buf);
+        read_buf = new_connection->read_buffer;
+        write_buf = new_connection->write_buffer;
+        buffer_reset(read_buf);
+        buffer_reset(write_buf);
     }
 
     new_connection->client_fd = client_fd;
     new_connection->origin_fd = -1;
-    new_connection->client_buffer = client_buf;
-    new_connection->origin_buffer = origin_buf;
+    new_connection->read_buffer = read_buf;
+    new_connection->write_buffer = write_buf;
     new_connection->origin_address_representation = origin_address_representation;
     new_connection->next = NULL;
     new_connection->references = 1;
@@ -351,9 +369,7 @@ static void
 proxy_write(struct selector_key *key)
 {
     struct state_machine *stm = &ATTACHMENT(key)->stm;
-    log(DEBUG,"ON WRITE 1");
     const proxy_state st = stm_handler_write(stm, key);
-    log(DEBUG,"ON WRITE 2");
     if (st == ERROR || st == DONE)
     {
         //TODO:
@@ -450,10 +466,10 @@ static void *dns_resolve_blocking(void *data)
 static void connection_destroy(connection *connection)
 {
     // CLOSE SOCKETS?
-    free(&connection->client_buffer->data);
-    free(&connection->client_buffer);
-    free(&connection->origin_buffer->data);
-    free(&connection->origin_buffer);
+    free(&connection->read_buffer->data);
+    free(&connection->read_buffer);
+    free(&connection->write_buffer->data);
+    free(&connection->write_buffer);
     free(connection);
 }
 
@@ -497,6 +513,52 @@ void connection_pool_destroy()
 
 /////////////////// FUNCIONES DE EL ESTADO COPYING ////////////////////////////////////////
 
+static struct copy * copy_ptr(struct selector_key * key){
+    struct copy * copy_client = &(ATTACHMENT(key)->copy_client);
+
+    if(*copy_client->fd == key->fd){
+        return copy_client;
+    }
+
+    return copy_client ->other;
+}
+
+static void on_arrival_copying(const unsigned state, struct selector_key * key){
+    connection *  connection = ATTACHMENT(key);
+    struct copy * copy_client = &(connection->copy_client);
+    struct copy * copy_origin = &(connection->copy_origin);
+    
+
+    copy_client->fd = &connection->client_fd;
+    copy_client->read_buffer = connection->read_buffer;
+    copy_client->write_buffer = connection->write_buffer;
+    copy_client->duplex = OP_READ | OP_WRITE; // TODO: Asignar dependiendo de las reglas de pop 3 
+    copy_client->other = copy_origin;
+
+    copy_origin->fd = &connection->origin_fd;
+    copy_origin->read_buffer = connection->write_buffer;
+    copy_origin->write_buffer = connection->read_buffer;
+    copy_origin->duplex = OP_READ | OP_WRITE; // TODO: Asignar dependiendo de las reglas de pop 3 
+    copy_origin->other = copy_client;
+}
+
+static fd_interest copy_compute_interests(fd_selector s, struct copy * copy){
+    fd_interest ret = OP_NOOP;
+    if((copy->duplex & OP_READ) && buffer_can_write(copy->read_buffer)){
+        ret |=OP_READ;
+    }
+    if((copy->duplex & OP_WRITE) && buffer_can_read(copy->write_buffer)){
+        ret |=OP_WRITE;
+    }
+
+    selector_status sel_status = selector_set_interest(s,*copy->fd,ret);
+    if(sel_status != SELECTOR_SUCCESS){
+        abort();
+    }
+
+    return ret;
+}
+
 void on_departure_copying(const unsigned state, struct selector_key *key)
 {
     printf("ON DEPARTURE");
@@ -507,97 +569,73 @@ void on_departure_copying(const unsigned state, struct selector_key *key)
 // Habria que hacer el manejo de dessetear el FD
 unsigned on_read_ready_copying(struct selector_key *key)
 {
-    struct connection *connection_to_read = ATTACHMENT(key);
-    int fd_to_read = key->fd;
-    buffer *buffer_to_write;
+    struct copy * copy = copy_ptr(key);
 
-    if (fd_to_read == connection_to_read->origin_fd)
-    {
-        buffer_to_write = (connection_to_read->origin_buffer);
-        log(DEBUG, "Reading from origin fd.");
-    }
-    else if (fd_to_read == connection_to_read->client_fd)
-    {
-        buffer_to_write = (connection_to_read->client_buffer);
-        log(DEBUG, "Reading from client fd.");
-    }
-    else
-    {
-        log(ERROR, "Error when reading in copying state. Bad file descriptor");
-        return CONNECTION_ERROR;
-    }
+    size_t max_size_to_read;
+    ssize_t readed;
+    buffer * buffer = copy->read_buffer;
+    unsigned ret_value = COPYING;
+    
 
-    size_t n=0;
-    uint8_t *ptr = buffer_write_ptr(buffer_to_write, &n);
-    size_t readed = recv(fd_to_read, ptr, n,0); 
-    log(DEBUG,"N VALUE = %d",(int)n);
-
-    if (readed>0)
-    {
-        buffer_write_adv(buffer_to_write, readed);
-        return COPYING;
+    uint8_t * ptr = buffer_write_ptr(buffer,&max_size_to_read);
+    readed = recv(key->fd,ptr,max_size_to_read,0);
+    log(DEBUG,"Reading from fd=%d , bytes = %d, max_cant = %d",key->fd,readed,max_size_to_read);
+    if(readed<=0){
+        //apagar ese fd de lectura
+         log(DEBUG,"Readed 0 or error.")
+        shutdown(*copy->fd,SHUT_RD);
+        copy->duplex &= ~OP_READ;   // le sacamos el interes de lectura
+        if(*copy->other->fd !=-1){
+            //apagar el otro para escritura
+            shutdown(*copy->other->fd,SHUT_WR);
+            copy->other->duplex &= ~OP_WRITE;
+        }
+    }else{
+        buffer_write_adv(buffer,readed);
     }
-    else
-    {
-        log(ERROR, "Can't write on buffer in copying read.");
+    
+    copy_compute_interests(key->s,copy);
+    copy_compute_interests(key->s,copy->other);
+
+    if(copy->duplex == OP_NOOP){
+        ret_value = DONE;
     }
 
-    return CONNECTION_ERROR; 
+    return ret_value;
 }
 unsigned on_write_ready_copying(struct selector_key *key)
 {
-    struct connection *connection = ATTACHMENT(key);
-    int fd_to_write = key->fd;
-    buffer *buffer_to_read;
 
-    if (fd_to_write == connection->origin_fd)
-    {
-        buffer_to_read = connection->client_buffer;
-        log(DEBUG, "Writing to origin.");
-    }
-    else if (fd_to_write == connection->client_fd)
-    {
-        buffer_to_read = connection->origin_buffer;
-        log(DEBUG, "Writing to client.");
-    }
-    else
-    {
-        log(ERROR, "Error when writing in copying state. Bad file descriptor");
-        return CONNECTION_ERROR;
-    }
+    struct copy * copy = copy_ptr(key);
 
-    if (buffer_can_read(buffer_to_read))
-    {
-        size_t rbytes = 0;
-        uint8_t * ptr_read;
+    size_t max_size_to_write;
+    ssize_t sended;
+    buffer * buffer = copy->write_buffer;
+    unsigned ret_value = COPYING;
+    uint8_t *ptr = buffer_read_ptr(buffer,&max_size_to_write);
+    sended = send(key->fd,ptr,max_size_to_write,0); // TODO: AGREGAR MSG_NOSIGNAL
 
-        ptr_read = buffer_read_ptr(buffer_to_read, &rbytes);
-
-        char *aux_buffer = malloc(rbytes);
-
-        log(DEBUG, "Writing %d bytes to buffer", rbytes);
-
-        for (size_t i = 0; i < rbytes; i++)
-        {
-            aux_buffer[i] = buffer_read(buffer_to_read); 
+    if(sended<=0){
+         //apagar ese fd de escritura
+         log(DEBUG,"Sended 0 or error");
+         shutdown(*copy->fd,SHUT_WR);
+        copy->duplex &= ~OP_WRITE;   // le sacamos el interes de escritura
+        if(*copy->other->fd !=-1){
+            //apagar el otro para lectura
+            // shutdown(*copy->other->fd,SHUT_RD);
+            copy->other->duplex &= ~OP_READ;
         }
-
-        errno =0;
-        int bytes_sent = send(fd_to_write,aux_buffer,rbytes,0); // Not blocking ver  NO_MSGSINGAL 
-
-        if(bytes_sent < 0){
-            log(ERROR, "Cant send %d bytes to %d fd. Errno value = %d ",rbytes,fd_to_write,errno);
-        }
-        
-        free(aux_buffer);
-
-        log(DEBUG, "Writing succeed");
-        return COPYING;
+    }else{
+        buffer_read_adv(buffer,sended);
     }
-    else
-    {
-        log(DEBUG, "Cant't write");
-        return CONNECTION_ERROR;
+
+    copy_compute_interests(key->s,copy);
+    copy_compute_interests(key->s,copy->other);
+
+    if(copy->duplex == OP_NOOP){
+        ret_value = DONE;
     }
+
+    return ret_value;
 
 }
