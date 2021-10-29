@@ -567,7 +567,6 @@ void on_departure_copying(const unsigned state, struct selector_key *key)
 {
     printf("ON DEPARTURE");
     connection_destroy(ATTACHMENT(key));
-    return DONE;
 }
 
 // Habria que hacer el manejo de dessetear el FD
