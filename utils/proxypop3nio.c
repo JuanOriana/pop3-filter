@@ -40,8 +40,12 @@ typedef struct connection
     buffer *origin_buffer;
 
     address_representation origin_address_representation;
-    /** Resolución de la dirección del origin server. */
-    struct sockaddr_in *origin_resolution;
+
+    /** Resolución basica la dirección del origin server. */
+    struct addrinfo *dns_resolution;
+
+    /** Representa cual es la resolucion que estamos probando actualmente. */
+    struct addrinfo *dns_resolution_current_iter;
 
     /** Cantidad de referencias a este objeto. si es uno se debe destruir. */
     unsigned references;
@@ -88,13 +92,12 @@ unsigned on_read_ready_copying(struct selector_key *key);
 unsigned on_write_ready_copying(struct selector_key *key);
 static void connection_destroy_referenced(connection *connection);
 static void connection_destroy(connection *connection);
+static unsigned dns_resolve_done(struct selector_key *key);
 
 static const struct state_definition client_states[] = {
     {
         .state = RESOLVING,
-        .on_arrival = NULL, // resolver nombre e irse a connecting
-        //.on_block_ready = dns_resolve_done, // se ejecuta cuando se resuelve el nombre
-        // CREO que no hay que pasarle nada "on_arrival", el selector notifica cuando termino el "dns_resolve_blocking"
+        .on_block_ready = dns_resolve_done, // se ejecuta cuando se resuelve el nombre
     },
     {
         .state = CONNECTING,
@@ -183,9 +186,9 @@ int proxy_passive_accept(struct selector_key *key)
         log(DEBUG, "Trying to resolve name: %s", origin_representation->addr.fqdn);
 
         struct selector_key *blocking_key = malloc(sizeof(*blocking_key));
-
         if (key == NULL)
         {
+            log(ERROR, "Error resolving name");
             // TODO: manejar el error de malloc
         }
 
@@ -196,7 +199,9 @@ int proxy_passive_accept(struct selector_key *key)
         pthread_t thread_id;
         if (pthread_create(&thread_id, 0, dns_resolve_blocking, blocking_key) == -1)
         {
+            log(ERROR, "Error creating new thread");
             // TODO: manejar el error de que no se haya podido crear el thread
+            new_connection_instance->stm.initial = CONNECTION_ERROR;
         }
     }
 
@@ -314,9 +319,9 @@ static unsigned on_connection_ready(struct selector_key *key)
     {
         log(ERROR, "Problem connecting to origin server in on_connection-ready");
         if (SELECTOR_SUCCESS == selector_set_interest(key->s, connection->client_fd, OP_WRITE))
-            ret = ERROR;
+            ret = CONNECTION_ERROR;
         else
-            ret = ERROR;
+            ret = CONNECTION_ERROR;
     }
     else if (SELECTOR_SUCCESS == selector_set_interest(key->s, key->fd, OP_READ))
     {
@@ -386,13 +391,12 @@ proxy_close(struct selector_key *key)
 static void *dns_resolve_blocking(void *data)
 {
     struct selector_key *key = (struct selector_key *)data;
-    struct connection *proxy = ATTACHMENT(key);
+    struct connection *connection = ATTACHMENT(key);
 
     pthread_detach(pthread_self()); // REV
-    proxy->origin_resolution = 0;
-    struct addrinfo hints = {
+    connection->dns_resolution = 0;
+    struct addrinfo flags = {
         .ai_family = AF_UNSPEC,
-        /** Permite IPv4 o IPv6. */
         .ai_socktype = SOCK_STREAM,
         .ai_flags = AI_PASSIVE,
         .ai_protocol = 0,
@@ -402,45 +406,39 @@ static void *dns_resolve_blocking(void *data)
     };
 
     char buff[7];
-    snprintf(buff, sizeof(buff), "%d", proxy->origin_address_representation.port);
-    getaddrinfo(proxy->origin_address_representation.addr.fqdn, buff, &hints, &proxy->origin_resolution);
+    snprintf(buff, sizeof(buff), "%d", connection->origin_address_representation.port);
+    getaddrinfo(connection->origin_address_representation.addr.fqdn, buff, &flags, &connection->dns_resolution);
     selector_notify_block(key->s, key->fd);
 
     free(data);
     return 0;
 }
 
-// //// on_block_ready
-// static unsigned dns_resolve_done(struct selector_key key)
-// {
-//     struct connection *proxy = ATTACHMENT(key);
-//     if (proxy->origin_resolution != 0)
-//     {
-//         proxy->origin_address_information.domain = proxy->origin_resolution->ai_family;
-//         proxy->origin_address_information.addr_length = proxy->origin_resolution->ai_addrlen;
-//         memcpy(&proxy->origin_address_information.addr.addr_storage,
-//                proxy->origin_resolution->ai_addr,
-//                proxy->origin_resolution->ai_addrlen);
-//         freeaddrinfo(proxy->origin_resolution);
-//         proxy->origin_resolution = 0;
-//     }
-//     else
-//     {
-//         // proxy->errorSender.message = "-ERR Connection refused.\r\n";
-//         // if (MUX_SUCCESS != setInterest(key->s, proxy->clientFd, WRITE))
-//         //     return ERROR;
-//         // return SEND_ERROR_MSG;
-//     }
+//// on_block_ready
+static unsigned dns_resolve_done(struct selector_key *key)
+{
+    //TODO: NO SE ITERA EN LA RESOLUCION POR LOS DISTINTOS RESULTADOS!!
+    struct connection *connection = ATTACHMENT(key);
+    if (connection->dns_resolution != 0)
+    {
+        connection->origin_address_representation.domain = connection->dns_resolution->ai_family;
+        connection->origin_address_representation.addr_len = connection->dns_resolution->ai_addrlen;
+        memcpy(&connection->origin_address_representation.addr.address_storage,
+               connection->dns_resolution->ai_addr,
+               connection->dns_resolution->ai_addrlen);
+        freeaddrinfo(connection->dns_resolution);
+        connection->dns_resolution = 0;
+    }
+    else
+    {
+        // proxy->errorSender.message = "-ERR Connection refused.\r\n";
+        // if (MUX_SUCCESS != setInterest(key->s, proxy->clientFd, WRITE))
+        //     return ERROR;
+        // return SEND_ERROR_MSG;
+    }
 
-//     return connect_to_host(key->s, proxy);
-// }
-
-// /**
-//  * Intenta establecer una conexión con el origin server.
-//  */
-// static unsigned connect_to_host(fd_selector selector, struct connection *proxy)
-// {
-// }
+    return start_connection_with_origin(key->s, connection);
+}
 
 /**
  *  Destruye y libera un proxyPopv3
