@@ -138,6 +138,8 @@ typedef struct fd_handler
    */
     void (*handle_close)(struct selector_key *key);
 
+    void (*handle_time_out)(struct selector_key * key);
+
 } fd_handler;
 
 /**
@@ -194,5 +196,7 @@ selector_notify_block(fd_selector s,
 
 /** Marca un fd como no bloqueante */
 int set_non_blocking(int fd);
+
+void selector_check_time_out(fd_selector selector);
 
 #endif

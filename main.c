@@ -9,7 +9,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <sys/time.h>
+#include <time.h>
 #include <limits.h>
 #include "./include/args.h"
 #include "./utils/include/logger.h"
@@ -124,13 +124,22 @@ int main(int argc, char *argv[])
             goto selector_finally;
         }
     }
-
+time_t last_used = time(NULL);
+time_t current_time = time(NULL);
     for (; !done;)
     {
         err_msg = NULL;
         ss = selector_select(selector);
+        current_time = time(NULL);
+        if(difftime(current_time,last_used)>=TIMEOUT){
+        // log(DEBUG,"DIFFTIME = %f AND current = %ld and last %ld ",difftime(current_time,last_used),current_time,last_used);
+        last_used = current_time;
+            selector_check_time_out(selector);
+        }
+
         if (ss != SELECTOR_SUCCESS)
         {
+            log(ERROR,"%s",selector_error(ss));
             err_msg = "serving";
             goto selector_finally;
         }

@@ -38,10 +38,16 @@ struct copy
     struct copy *other;
 };
 
+struct session{
+    time_t last_used;
+};
+
 typedef struct connection
 {
     int client_fd;
     int origin_fd;
+
+    struct session session;
 
     char client_addr_humanized[ADDR_STRING_BUFF_SIZE];
     char origin_addr_humanized[ADDR_STRING_BUFF_SIZE];
@@ -97,12 +103,16 @@ static void proxy_read(struct selector_key *key);
 static void proxy_write(struct selector_key *key);
 static void proxy_block(struct selector_key *key);
 static void proxy_close(struct selector_key *key);
+static void proxy_time_out(struct selector_key *key);
+
 static const struct fd_handler proxy_handler = {
     .handle_read = proxy_read,
     .handle_write = proxy_write,
     .handle_close = proxy_close,
     .handle_block = proxy_block,
+    .handle_time_out = proxy_time_out,
 };
+
 
 unsigned on_read_ready_copying(struct selector_key *key);
 unsigned on_write_ready_copying(struct selector_key *key);
@@ -269,6 +279,8 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     new_connection->stm.states = client_states;
     stm_init(&new_connection->stm);
 
+    new_connection->session.last_used = time(NULL);
+
     return new_connection;
 }
 
@@ -328,7 +340,7 @@ static unsigned on_connection_ready(struct selector_key *key)
     connection *connection = ATTACHMENT(key);
     int error;
     socklen_t len = sizeof(error);
-    unsigned ret = ERROR;
+    unsigned ret = CONNECTION_ERROR;
     // char buff[ADDR_STRING_BUFF_SIZE];
 
     if (getsockopt(key->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0)
@@ -362,6 +374,7 @@ proxy_read(struct selector_key *key)
         return;
     }
     struct state_machine *stm = &ATTACHMENT(key)->stm;
+    ATTACHMENT(key)->session.last_used = time(NULL); // Update the last time used
     stm_handler_read(stm, key);
 
     // if(ERROR == st || DONE == st) {
@@ -373,11 +386,21 @@ static void
 proxy_write(struct selector_key *key)
 {
     struct state_machine *stm = &ATTACHMENT(key)->stm;
+    ATTACHMENT(key)->session.last_used = time(NULL); // Update the last time used
     const proxy_state st = stm_handler_write(stm, key);
     if (st == CONNECTION_ERROR || st == DONE)
     {
         // TODO:
         //  socksv5_done(key);
+    }
+}
+
+static void proxy_time_out(struct selector_key *key){
+    connection * connection = ATTACHMENT(key);
+
+    if(connection!= NULL && difftime(time(NULL),connection->session.last_used) >= TIMEOUT){
+        // log(DEBUG,"Destroying connection for inactivity");
+        // connection_destroy(ATTACHMENT(key)); /// TODO: ARREGLAR EL PROXY_DESTROY
     }
 }
 
@@ -465,6 +488,9 @@ static unsigned dns_resolve_done(struct selector_key *key)
 static void connection_destroy(connection *connection)
 {
     // CLOSE SOCKETS?
+    log(DEBUG,"Closing connection");
+    close(connection->origin_fd);
+    close(connection->client_fd);
     free(&connection->read_buffer->data);
     free(&connection->read_buffer);
     free(&connection->write_buffer->data);
@@ -476,7 +502,7 @@ static void connection_destroy_referenced(connection *connection)
 {
     if (connection == NULL)
     {
-        // nada para hacer
+        log(ERROR,"Received NULL connection");   // nada para hacer
     }
     else if (connection->references == 1)
     {
@@ -495,7 +521,8 @@ static void connection_destroy_referenced(connection *connection)
         }
     }
     else
-    {
+    {   
+        // connection_destroy(connection); // TODO: Ver por que esto no estaba aca 
         connection->references -= 1;
     }
 }
