@@ -319,6 +319,7 @@ static unsigned start_connection_with_origin(fd_selector selector, connection *c
 
 finally:
     log(ERROR, "Cant connect to origin server.");
+    connection->dns_resolution_current_iter = connection->dns_resolution_current_iter->ai_next;
     return ERROR;
 }
 
@@ -424,8 +425,8 @@ static void *dns_resolve_blocking(void *data)
     char buff[7];
     snprintf(buff, sizeof(buff), "%d", connection->origin_address_representation.port);
     getaddrinfo(connection->origin_address_representation.addr.fqdn, buff, &flags, &connection->dns_resolution);
+    connection->dns_resolution_current_iter = connection->dns_resolution;
     selector_notify_block(key->s, key->fd);
-
     free(data);
     return 0;
 }
@@ -436,47 +437,24 @@ static unsigned dns_resolve_done(struct selector_key *key)
     // TODO: NO SE ITERA EN LA RESOLUCION POR LOS DISTINTOS RESULTADOS!!
     struct connection *connection = ATTACHMENT(key);
 
-    struct addrinfo *resolv_response = connection->dns_resolution;
-    // int new_server_socket;
-
-    // for (resolv_response; resolv_response != NULL; resolv_response = resolv_response->ai_next)
-    // {
-    //     if ((new_server_socket = socket(resolv_response->ai_family, resolv_response->ai_socktype, 0)) <= 0)
-    //     {
-    //         continue;
-    //         // Si no pudo crear el socket que siga iterando
-    //     }
-    //     if (connect(new_server_socket, resolv_response->ai_addr, resolv_response->ai_addrlen) < 0)
-    //     {
-    //         continue;
-    //         // Si no se pudo conectar que siga iterando
-    //     }
-
-    //     break;
-    //     // Si pudro crear el socket y conectarse, todo OK!
-    // }
-
-    if (resolv_response != NULL && resolv_response != 0)
+    if (connection->dns_resolution_current_iter != NULL)
     {
         // connection->origin_fd = new_server_socket;
-        connection->origin_address_representation.domain = resolv_response->ai_family;
-        connection->origin_address_representation.addr_len = resolv_response->ai_addrlen;
+        connection->origin_address_representation.domain = connection->dns_resolution_current_iter->ai_family;
+        connection->origin_address_representation.addr_len = connection->dns_resolution_current_iter->ai_addrlen;
         memcpy(&connection->origin_address_representation.addr.address_storage,
-               resolv_response->ai_addr,
-               resolv_response->ai_addrlen);
-        freeaddrinfo(connection->dns_resolution);
-        connection->dns_resolution = 0;
+               connection->dns_resolution_current_iter->ai_addr,
+               connection->dns_resolution_current_iter->ai_addrlen);
     }
     else
     {
-        // TODO: manejo de error, no se pudo resolver el dominio por una direccion valida
+        freeaddrinfo(connection->dns_resolution);
+        connection->dns_resolution = 0;
         //  proxy->errorSender.message = "-ERR Connection refused.\r\n";
         //  if (MUX_SUCCESS != setInterest(key->s, proxy->clientFd, WRITE))
         //      return ERROR;
         //  return SEND_ERROR_MSG;
     }
-
-    // close(new_server_socket);
 
     return start_connection_with_origin(key->s, connection);
 }
