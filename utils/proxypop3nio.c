@@ -185,7 +185,7 @@ void proxy_passive_accept(struct selector_key *key)
     socklen_t client_address_len = sizeof(client_address);
     address_representation *origin_representation = (address_representation *)key->data;
     selector_status ss = SELECTOR_SUCCESS;
-    connection *new_connection_instance;
+    connection *new_connection_instance = NULL;
     char * err_msg;
 
     // Wait for a client to connect
@@ -193,13 +193,13 @@ void proxy_passive_accept(struct selector_key *key)
     if (client_socket < 0)
     {
         err_msg = "cant accept client connection";
-        goto passivefail;
+        goto passivefinally;
     }
 
     if (set_non_blocking(client_socket) == -1)
     {
         err_msg = "failed on passive-accept";
-        goto passivefail;
+        goto passivefinally;
 
     }
 
@@ -207,7 +207,7 @@ void proxy_passive_accept(struct selector_key *key)
     if (new_connection_instance == NULL)
     {
         err_msg = "couldnt create new connection";
-        goto passivefail;
+        goto passivefinally;
 
     }
 
@@ -218,7 +218,7 @@ void proxy_passive_accept(struct selector_key *key)
     if (ss != SELECTOR_SUCCESS)
     {
         err_msg = "selector error register";
-        goto passivefail;
+        goto passivefinally;
 
     }
 
@@ -236,7 +236,7 @@ void proxy_passive_accept(struct selector_key *key)
         {
             err_msg = "can't create key for name resolution";
             selector_unregister_fd(key->s,client_socket);
-            goto passivefail;
+            goto passivefinally;
         }
 
         blocking_key->s = key->s;
@@ -250,13 +250,15 @@ void proxy_passive_accept(struct selector_key *key)
             if(SELECTOR_SUCCESS != selector_set_interest(key->s, new_connection_instance->client_fd, OP_WRITE)){
                 err_msg = "unable to create a new thread";
                 selector_unregister_fd(key->s,client_socket);
-                goto passivefail;
+                goto passivefinally;
             }
             new_connection_instance->stm.initial = ERROR_W_MESSAGE_ST;
         }
     }
-passivefail:
-    log(ERROR,"Passive accept fail: %s",err_msg);
+    return;
+passivefinally:
+    if (err_msg != NULL)
+        log(ERROR,"Passive accept fail: %s",err_msg);
     if (client_socket != -1)
         close(client_socket);
     if (new_connection_instance != NULL){
@@ -320,31 +322,26 @@ struct connection *new_connection(int client_fd, address_representation origin_a
 static unsigned start_connection_with_origin(fd_selector selector, connection *connection)
 {
     address_representation origin_address_representation = connection->origin_address_representation;
-
     connection->origin_fd = socket(origin_address_representation.domain, SOCK_STREAM, IPPROTO_TCP);
 
     if (connection->origin_fd == -1)
-        goto finally;
+        goto connectionfinally;
     if (set_non_blocking(connection->origin_fd) == -1)
-        goto finally;
+        goto connectionfinally;
 
     if (connect(connection->origin_fd, (const struct sockaddr *)&origin_address_representation.addr.address_storage,
                 origin_address_representation.addr_len) == -1)
     {
         if (errno == EINPROGRESS)
         {
-            log(DEBUG, "In progress");
-            /**
-             * Polleando cliente
-             */
+            log(DEBUG, "Connecting in progress");
             selector_status ss = selector_set_interest(selector, connection->client_fd, OP_NOOP);
             if (ss != SELECTOR_SUCCESS)
-                goto finally;
-
-            /** Esperamos la conexion en el nuevo socket. */
+                goto connectionfinally;
+            // Hay que usar OP_WRITE para esperar la conexion.
             ss = selector_register(selector, connection->origin_fd, &proxy_handler, OP_WRITE, connection);
             if (ss != SELECTOR_SUCCESS)
-                goto finally;
+                goto connectionfinally;
 
             connection->references += 1;
         }
@@ -353,16 +350,23 @@ static unsigned start_connection_with_origin(fd_selector selector, connection *c
     {
         /**
          * Estamos conectados sin esperar... no parece posible
-         * Saltaríamos directamente a COPY.
          */
         log(DEBUG, "Not waiting ???");
     }
     return CONNECTING;
 
-finally:
-    log(ERROR, "Cant connect to origin server.");
+connectionfinally:
     connection->dns_resolution_current_iter = connection->dns_resolution_current_iter->ai_next;
-    return ERROR;
+    // This only makes sense if it's the last iteration (drowning the selector)
+    if (connection->dns_resolution_current_iter == NULL) {
+        log(ERROR, "Cant connect to origin server.");
+        connection->error_data.err_msg = "-ERR Connection refused.\r\n";
+        if (SELECTOR_SUCCESS != selector_set_interest(selector, connection->client_fd, OP_WRITE)) {
+            return ERROR_ST;
+        }
+        return ERROR_W_MESSAGE_ST;
+    }
+    return ERROR_ST;
 }
 
 static unsigned on_connection_ready(struct selector_key *key)
@@ -371,7 +375,6 @@ static unsigned on_connection_ready(struct selector_key *key)
     int error;
     socklen_t len = sizeof(error);
     unsigned ret = ERROR_ST;
-    // char buff[ADDR_STRING_BUFF_SIZE];
 
     if (getsockopt(key->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0)
         error = 1;
@@ -379,8 +382,9 @@ static unsigned on_connection_ready(struct selector_key *key)
     if (error != 0)
     {
         log(ERROR, "Problem connecting to origin server in on_connection-ready");
+        connection->error_data.err_msg = "-ERR Connection refused.\r\n";
         if (SELECTOR_SUCCESS == selector_set_interest(key->s, connection->client_fd, OP_WRITE))
-            ret = ERROR_ST;
+            ret = ERROR_W_MESSAGE_ST;
         else
             ret = ERROR_ST;
     }
@@ -388,7 +392,7 @@ static unsigned on_connection_ready(struct selector_key *key)
     {
         struct sockaddr_storage *origin = &connection->origin_address_representation.addr.address_storage;
         sockaddr_to_human(connection->origin_addr_humanized, ADDR_STRING_BUFF_SIZE, origin);
-        log(INFO, "Connection established. Client Address: %s; Origin Address: %s.", connection->client_addr_humanized, connection->origin_addr_humanized);
+        log(INFO, "Connection successful. Client Address: %s; Origin Address: %s.", connection->client_addr_humanized, connection->origin_addr_humanized);
         ret = COPYING;
         // deberia ret = HELLO;
     }
@@ -487,10 +491,10 @@ static void *dns_resolve_blocking(void *data)
 //// on_block_ready
 static unsigned dns_resolve_done(struct selector_key *key)
 {
-    // TODO: NO SE ITERA EN LA RESOLUCION POR LOS DISTINTOS RESULTADOS!!
     struct connection *connection = ATTACHMENT(key);
+    int ret_val = ERROR_ST;
 
-    if (connection->dns_resolution_current_iter != NULL)
+    while (connection->dns_resolution_current_iter != NULL)
     {
         // connection->origin_fd = new_server_socket;
         connection->origin_address_representation.domain = connection->dns_resolution_current_iter->ai_family;
@@ -498,18 +502,13 @@ static unsigned dns_resolve_done(struct selector_key *key)
         memcpy(&connection->origin_address_representation.addr.address_storage,
                connection->dns_resolution_current_iter->ai_addr,
                connection->dns_resolution_current_iter->ai_addrlen);
+        ret_val = start_connection_with_origin(key->s,connection);
+        if (ret_val != ERROR_ST && ret_val != ERROR_W_MESSAGE_ST)
+            break;
     }
-    else
-    {
-        freeaddrinfo(connection->dns_resolution);
-        connection->dns_resolution = 0;
-        //  proxy->errorSender.message = "-ERR Connection refused.\r\n";
-        //  if (MUX_SUCCESS != setInterest(key->s, proxy->clientFd, WRITE))
-        //      return ERROR;
-        //  return SEND_ERROR_MSG;
-    }
-
-    return start_connection_with_origin(key->s, connection);
+    freeaddrinfo(connection->dns_resolution);
+    connection->dns_resolution = 0;
+    return ret_val;
 }
 
 /**
