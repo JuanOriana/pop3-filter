@@ -141,14 +141,14 @@ static const struct state_definition client_states[] = {
         .on_write_ready = NULL,
     }};
 
-static int proxy_connect_to_origin();
+// static int proxy_connect_to_origin();
 struct connection *new_connection(int client_fd, address_representation origin_address_representation);
 static void connection_destroy(connection *connection);
 static unsigned start_connection_with_origin(fd_selector selector, connection *connection);
 static void *dns_resolve_blocking(void *data);
-static unsigned connect_to_host(fd_selector selector, struct connection *proxy);
+// static unsigned connect_to_host(fd_selector selector, struct connection *proxy);
 
-int proxy_passive_accept(struct selector_key *key)
+void proxy_passive_accept(struct selector_key *key)
 {
     struct sockaddr_storage client_address; // Client address
     // Set length of client address structure (in-out parameter)
@@ -161,14 +161,14 @@ int proxy_passive_accept(struct selector_key *key)
     if (client_socket < 0)
     {
         log(ERROR, "Cant accept client connection");
-        return -1;
+        return ;
     }
 
     if (set_non_blocking(client_socket) == -1)
     {
         log(ERROR, "Failed on passive-accept");
         close(client_socket);
-        return -1;
+        return ;
     }
 
     connection *new_connection_instance = new_connection(client_socket, *origin_representation);
@@ -176,7 +176,7 @@ int proxy_passive_accept(struct selector_key *key)
     {
         log(ERROR, "Couldnt create new connection");
         close(client_socket);
-        return -1;
+        return ;
     }
 
     sockaddr_to_human(new_connection_instance->client_addr_humanized, ADDR_STRING_BUFF_SIZE, &client_address);
@@ -187,7 +187,7 @@ int proxy_passive_accept(struct selector_key *key)
     {
         log(ERROR, "Selector error register %s ", selector_error(ss));
         close(client_socket);
-        return -1;
+        return ;
         // More checks
     }
 
@@ -223,7 +223,7 @@ int proxy_passive_accept(struct selector_key *key)
         }
     }
 
-    return client_socket;
+    
 }
 
 struct connection *new_connection(int client_fd, address_representation origin_address_representation)
@@ -330,7 +330,7 @@ static unsigned on_connection_ready(struct selector_key *key)
     int error;
     socklen_t len = sizeof(error);
     unsigned ret = ERROR;
-    char buff[ADDR_STRING_BUFF_SIZE];
+    // char buff[ADDR_STRING_BUFF_SIZE];
 
     if (getsockopt(key->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0)
         error = 1;
@@ -375,7 +375,7 @@ proxy_write(struct selector_key *key)
 {
     struct state_machine *stm = &ATTACHMENT(key)->stm;
     const proxy_state st = stm_handler_write(stm, key);
-    if (st == ERROR || st == DONE)
+    if (st == CONNECTION_ERROR || st == DONE)
     {
         //TODO:
         // socksv5_done(key);
@@ -388,7 +388,7 @@ proxy_block(struct selector_key *key)
     struct state_machine *stm = &ATTACHMENT(key)->stm;
     const proxy_state st = stm_handler_block(stm, key);
 
-    if (st == ERROR || st == DONE)
+    if (st == CONNECTION_ERROR   || st == DONE)
     {
         //TODO:
         // socksv5_done(key);
