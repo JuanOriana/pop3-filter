@@ -567,8 +567,7 @@ handle_block_notifications(fd_selector s)
     };
     pthread_mutex_lock(&s->resolution_mutex);
     for (struct blocking_job *j = s->resolution_jobs;
-         j != NULL;
-         j = j->next)
+         j != NULL;)
     {
 
         struct item *item = s->fds + j->fd;
@@ -578,8 +577,9 @@ handle_block_notifications(fd_selector s)
             key.data = item->data;
             item->handler->handle_block(&key);
         }
-
-        free(j);
+        struct blocking_job *prev_job = j;
+        j = j->next;
+        free(prev_job);
     }
     s->resolution_jobs = 0;
     pthread_mutex_unlock(&s->resolution_mutex);
