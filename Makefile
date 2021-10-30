@@ -1,5 +1,5 @@
 COMPILER=gcc
-CFLAGS = -Wall -fsanitize=address -g -lpthread -pthread
+CFLAGS = -Wall -fsanitize=address -g -lpthread -pthread -D_POSIX_C_SOURCE=200112L
 # Ver si corresponde compilar con -o3 para optimizar
 all: clean utils main
 

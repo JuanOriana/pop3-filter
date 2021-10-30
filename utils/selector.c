@@ -577,8 +577,8 @@ handle_block_notifications(fd_selector s)
             key.data = item->data;
             item->handler->handle_block(&key);
         }
-        struct blocking_job *prev_job = j;
-        j = j->next;
+        struct blocking_job * prev_job = j;
+        j=j->next;
         free(prev_job);
     }
     s->resolution_jobs = 0;
@@ -706,7 +706,7 @@ int set_non_blocking(const int fd)
 }
 
 void selector_check_time_out(fd_selector selector){
-    
+
     struct selector_key key = {
         .s = selector
     };
@@ -715,7 +715,7 @@ void selector_check_time_out(fd_selector selector){
 
     for (int i = 0; i < max_fds; i++)
     {
-        struct item  * current_item = selector->fds+i; 
+        struct item  * current_item = selector->fds+i;
         key.fd = current_item->fd;
         key.data = current_item->data;
 

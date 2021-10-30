@@ -1,5 +1,5 @@
 COMPILER=gcc
-CFLAGS   = -Wall -fsanitize=address -g -I./include 
+CFLAGS   = -Wall -fsanitize=address -g -I./include -D_POSIX_C_SOURCE=200112L
 LINKER 	 = clang
 LFLAGS 	 = -Wall -fsanitize=address -g -lpthread
 
