@@ -26,6 +26,11 @@
 #define ADDR_STRING_BUFF_SIZE 64
 #define MAX_POOL 50
 
+//Patch for MacOS
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
+
 struct copy
 {
     // El file descriptor del otro.
@@ -83,7 +88,8 @@ typedef enum
     CONNECTING,
     COPYING,
     DONE,
-    CONNECTION_ERROR
+    ERROR_ST,
+    ERROR_W_MESSAGE_ST
 } proxy_state;
 
 typedef struct state_definition state_definition;
@@ -145,7 +151,13 @@ static const struct state_definition client_states[] = {
         .on_write_ready = NULL,
     },
     {
-        .state = CONNECTION_ERROR,
+        .state = ERROR_ST,
+        .on_departure = NULL,
+        .on_read_ready = NULL,
+        .on_write_ready = NULL,
+    },
+    {
+        .state = ERROR_W_MESSAGE_ST,
         .on_departure = NULL,
         .on_read_ready = NULL,
         .on_write_ready = NULL,
@@ -229,7 +241,7 @@ void proxy_passive_accept(struct selector_key *key)
         {
             log(ERROR, "Error creating new thread");
             // TODO: manejar el error de que no se haya podido crear el thread
-            new_connection_instance->stm.initial = CONNECTION_ERROR;
+            new_connection_instance->stm.initial = ERROR_ST;
         }
     }
 }
@@ -275,7 +287,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     new_connection->references = 1;
 
     new_connection->stm.initial = RESOLVING;
-    new_connection->stm.max_state = CONNECTION_ERROR;
+    new_connection->stm.max_state = ERROR_W_MESSAGE_ST;
     new_connection->stm.states = client_states;
     stm_init(&new_connection->stm);
 
@@ -340,7 +352,7 @@ static unsigned on_connection_ready(struct selector_key *key)
     connection *connection = ATTACHMENT(key);
     int error;
     socklen_t len = sizeof(error);
-    unsigned ret = CONNECTION_ERROR;
+    unsigned ret = ERROR_ST;
     // char buff[ADDR_STRING_BUFF_SIZE];
 
     if (getsockopt(key->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0)
@@ -350,9 +362,9 @@ static unsigned on_connection_ready(struct selector_key *key)
     {
         log(ERROR, "Problem connecting to origin server in on_connection-ready");
         if (SELECTOR_SUCCESS == selector_set_interest(key->s, connection->client_fd, OP_WRITE))
-            ret = CONNECTION_ERROR;
+            ret = ERROR_ST;
         else
-            ret = CONNECTION_ERROR;
+            ret = ERROR_ST;
     }
     else if (SELECTOR_SUCCESS == selector_set_interest(key->s, key->fd, OP_READ))
     {
@@ -388,7 +400,7 @@ proxy_write(struct selector_key *key)
     struct state_machine *stm = &ATTACHMENT(key)->stm;
     ATTACHMENT(key)->session.last_used = time(NULL); // Update the last time used
     const proxy_state st = stm_handler_write(stm, key);
-    if (st == CONNECTION_ERROR || st == DONE)
+    if (st == ERROR_ST || st == DONE)
     {
         // TODO:
         //  socksv5_done(key);
@@ -410,7 +422,7 @@ proxy_block(struct selector_key *key)
     struct state_machine *stm = &ATTACHMENT(key)->stm;
     const proxy_state st = stm_handler_block(stm, key);
 
-    if (st == CONNECTION_ERROR || st == DONE)
+    if (st == ERROR_ST || st == DONE)
     {
         // TODO:
         //  socksv5_done(key);
@@ -521,8 +533,8 @@ static void connection_destroy_referenced(connection *connection)
         }
     }
     else
-    {   
-        // connection_destroy(connection); // TODO: Ver por que esto no estaba aca 
+    {
+        // connection_destroy(connection); // TODO: Ver por que esto no estaba aca
         connection->references -= 1;
     }
 }
