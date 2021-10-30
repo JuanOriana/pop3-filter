@@ -161,14 +161,14 @@ void proxy_passive_accept(struct selector_key *key)
     if (client_socket < 0)
     {
         log(ERROR, "Cant accept client connection");
-        return ;
+        return;
     }
 
     if (set_non_blocking(client_socket) == -1)
     {
         log(ERROR, "Failed on passive-accept");
         close(client_socket);
-        return ;
+        return;
     }
 
     connection *new_connection_instance = new_connection(client_socket, *origin_representation);
@@ -176,7 +176,7 @@ void proxy_passive_accept(struct selector_key *key)
     {
         log(ERROR, "Couldnt create new connection");
         close(client_socket);
-        return ;
+        return;
     }
 
     sockaddr_to_human(new_connection_instance->client_addr_humanized, ADDR_STRING_BUFF_SIZE, &client_address);
@@ -187,7 +187,7 @@ void proxy_passive_accept(struct selector_key *key)
     {
         log(ERROR, "Selector error register %s ", selector_error(ss));
         close(client_socket);
-        return ;
+        return;
         // More checks
     }
 
@@ -204,7 +204,7 @@ void proxy_passive_accept(struct selector_key *key)
         log(DEBUG, "Trying to resolve name: %s", origin_representation->addr.fqdn);
 
         struct selector_key *blocking_key = malloc(sizeof(*blocking_key));
-        if (key == NULL)
+        if (blocking_key == NULL)
         {
             log(ERROR, "Error resolving name");
             // TODO: manejar el error de malloc
@@ -222,8 +222,6 @@ void proxy_passive_accept(struct selector_key *key)
             new_connection_instance->stm.initial = CONNECTION_ERROR;
         }
     }
-
-    
 }
 
 struct connection *new_connection(int client_fd, address_representation origin_address_representation)
@@ -377,8 +375,8 @@ proxy_write(struct selector_key *key)
     const proxy_state st = stm_handler_write(stm, key);
     if (st == CONNECTION_ERROR || st == DONE)
     {
-        //TODO:
-        // socksv5_done(key);
+        // TODO:
+        //  socksv5_done(key);
     }
 }
 
@@ -388,10 +386,10 @@ proxy_block(struct selector_key *key)
     struct state_machine *stm = &ATTACHMENT(key)->stm;
     const proxy_state st = stm_handler_block(stm, key);
 
-    if (st == CONNECTION_ERROR   || st == DONE)
+    if (st == CONNECTION_ERROR || st == DONE)
     {
-        //TODO:
-        // socksv5_done(key);
+        // TODO:
+        //  socksv5_done(key);
     }
 }
 
@@ -411,7 +409,7 @@ static void *dns_resolve_blocking(void *data)
     struct selector_key *key = (struct selector_key *)data;
     struct connection *connection = ATTACHMENT(key);
 
-    pthread_detach(pthread_self()); // REV
+    pthread_detach(pthread_self());
     connection->dns_resolution = 0;
     struct addrinfo flags = {
         .ai_family = AF_UNSPEC,
@@ -435,25 +433,50 @@ static void *dns_resolve_blocking(void *data)
 //// on_block_ready
 static unsigned dns_resolve_done(struct selector_key *key)
 {
-    //TODO: NO SE ITERA EN LA RESOLUCION POR LOS DISTINTOS RESULTADOS!!
+    // TODO: NO SE ITERA EN LA RESOLUCION POR LOS DISTINTOS RESULTADOS!!
     struct connection *connection = ATTACHMENT(key);
-    if (connection->dns_resolution != 0)
+
+    struct addrinfo *resolv_response = connection->dns_resolution;
+    // int new_server_socket;
+
+    // for (resolv_response; resolv_response != NULL; resolv_response = resolv_response->ai_next)
+    // {
+    //     if ((new_server_socket = socket(resolv_response->ai_family, resolv_response->ai_socktype, 0)) <= 0)
+    //     {
+    //         continue;
+    //         // Si no pudo crear el socket que siga iterando
+    //     }
+    //     if (connect(new_server_socket, resolv_response->ai_addr, resolv_response->ai_addrlen) < 0)
+    //     {
+    //         continue;
+    //         // Si no se pudo conectar que siga iterando
+    //     }
+
+    //     break;
+    //     // Si pudro crear el socket y conectarse, todo OK!
+    // }
+
+    if (resolv_response != NULL && resolv_response != 0)
     {
-        connection->origin_address_representation.domain = connection->dns_resolution->ai_family;
-        connection->origin_address_representation.addr_len = connection->dns_resolution->ai_addrlen;
+        // connection->origin_fd = new_server_socket;
+        connection->origin_address_representation.domain = resolv_response->ai_family;
+        connection->origin_address_representation.addr_len = resolv_response->ai_addrlen;
         memcpy(&connection->origin_address_representation.addr.address_storage,
-               connection->dns_resolution->ai_addr,
-               connection->dns_resolution->ai_addrlen);
+               resolv_response->ai_addr,
+               resolv_response->ai_addrlen);
         freeaddrinfo(connection->dns_resolution);
         connection->dns_resolution = 0;
     }
     else
     {
-        // proxy->errorSender.message = "-ERR Connection refused.\r\n";
-        // if (MUX_SUCCESS != setInterest(key->s, proxy->clientFd, WRITE))
-        //     return ERROR;
-        // return SEND_ERROR_MSG;
+        // TODO: manejo de error, no se pudo resolver el dominio por una direccion valida
+        //  proxy->errorSender.message = "-ERR Connection refused.\r\n";
+        //  if (MUX_SUCCESS != setInterest(key->s, proxy->clientFd, WRITE))
+        //      return ERROR;
+        //  return SEND_ERROR_MSG;
     }
+
+    // close(new_server_socket);
 
     return start_connection_with_origin(key->s, connection);
 }
@@ -584,21 +607,21 @@ unsigned on_read_ready_copying(struct selector_key *key)
     // log(DEBUG, "Reading from fd=%d , bytes = %d, max_cant = %d", key->fd, readed, max_size_to_read);
     if (readed > 0)
     {
-        buffer_write_adv(buffer, readed);  
+        buffer_write_adv(buffer, readed);
     }
     else
     {
-         //apagar ese fd de lectura
-        log(ERROR, "Readed 0 or error. Error: %s",strerror(errno));
-            shutdown(*copy->fd, SHUT_RD);
+        // apagar ese fd de lectura
+        log(ERROR, "Readed 0 or error. Error: %s", strerror(errno));
+        shutdown(*copy->fd, SHUT_RD);
         copy->duplex &= ~OP_READ; // le sacamos el interes de lectura
         if (*copy->other->fd != -1)
         {
-            //apagar el otro para escritura
+            // apagar el otro para escritura
             shutdown(*copy->other->fd, SHUT_WR);
             copy->other->duplex &= ~OP_WRITE;
         }
-        //TODO: Ver si no se tendria que retornar a error y cerrar las conexiones que quedaron abiertas.
+        // TODO: Ver si no se tendria que retornar a error y cerrar las conexiones que quedaron abiertas.
     }
 
     copy_compute_interests(key->s, copy);
@@ -625,14 +648,14 @@ unsigned on_write_ready_copying(struct selector_key *key)
 
     if (sended <= 0)
     {
-        //apagar ese fd de escritura
+        // apagar ese fd de escritura
         log(DEBUG, "Sended 0 or error. ERRNO");
         shutdown(*copy->fd, SHUT_WR);
         copy->duplex &= ~OP_WRITE; // le sacamos el interes de escritura
         if (*copy->other->fd != -1)
         {
-            //apagar el otro para lectura
-            // shutdown(*copy->other->fd,SHUT_RD);
+            // apagar el otro para lectura
+            //  shutdown(*copy->other->fd,SHUT_RD);
             copy->other->duplex &= ~OP_READ;
         }
     }
