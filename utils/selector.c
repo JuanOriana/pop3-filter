@@ -704,3 +704,23 @@ int set_non_blocking(const int fd)
     }
     return ret;
 }
+
+void selector_check_time_out(fd_selector selector){
+    
+    struct selector_key key = {
+        .s = selector
+    };
+
+    int max_fds = selector->max_fd;
+
+    for (int i = 0; i < max_fds; i++)
+    {
+        struct item  * current_item = selector->fds+i; 
+        key.fd = current_item->fd;
+        key.data = current_item->data;
+
+        if(ITEM_USED(current_item) && current_item->handler->handle_time_out != NULL){
+            current_item->handler->handle_time_out(&key);
+        }
+    }
+}

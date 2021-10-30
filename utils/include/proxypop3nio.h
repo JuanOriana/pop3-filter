@@ -3,6 +3,7 @@
 
 #define TRUE 1
 #define FALSE 0
+#define TIMEOUT 20.0 // TODO: incremetnar este valor, valor bajo para probar
 
 #include "../../utils/include/netutils.h"
 
