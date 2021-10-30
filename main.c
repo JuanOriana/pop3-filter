@@ -124,19 +124,20 @@ int main(int argc, char *argv[])
             goto selector_finally;
         }
     }
-time_t last_used = time(NULL);
-time_t current_time = time(NULL);
-    for (; !done;)
+
+    time_t last_used = time(NULL);
+    time_t current_time = time(NULL);
+
+    for (;!done;)
     {
         err_msg = NULL;
         ss = selector_select(selector);
         current_time = time(NULL);
         if(difftime(current_time,last_used)>=TIMEOUT){
         // log(DEBUG,"DIFFTIME = %f AND current = %ld and last %ld ",difftime(current_time,last_used),current_time,last_used);
-        last_used = current_time;
+            last_used = current_time;
             selector_check_time_out(selector);
         }
-
         if (ss != SELECTOR_SUCCESS)
         {
             log(ERROR,"%s",selector_error(ss));
@@ -247,7 +248,7 @@ static int build_passive(IP_REP_TYPE ip_type)
     }
     else
     {
-        log(DEBUG, "Waiting for TCP connections on socket %d\n", client_socket);
+        log(INFO, "Waiting for %s TCP connections on socket %d\n",ip_type == ADDR_IPV4?"IPv4":"IPV6", client_socket);
     }
     return client_socket;
 }

@@ -47,6 +47,12 @@ struct session{
     time_t last_used;
 };
 
+typedef struct error_data {
+    char * err_msg;
+    size_t msg_len;
+    size_t msg_sent_size;
+} error_data;
+
 typedef struct connection
 {
     int client_fd;
@@ -76,6 +82,8 @@ typedef struct connection
 
     /** Cantidad de referencias a este objeto. si es uno se debe destruir. */
     unsigned references;
+
+    error_data error_data;
 
     struct connection *next;
 } connection;
@@ -177,28 +185,30 @@ void proxy_passive_accept(struct selector_key *key)
     socklen_t client_address_len = sizeof(client_address);
     address_representation *origin_representation = (address_representation *)key->data;
     selector_status ss = SELECTOR_SUCCESS;
+    connection *new_connection_instance;
+    char * err_msg;
 
     // Wait for a client to connect
     int client_socket = accept(key->fd, (struct sockaddr *)&client_address, &client_address_len); // TODO : Setear flag de no bloqueante
     if (client_socket < 0)
     {
-        log(ERROR, "Cant accept client connection");
-        return;
+        err_msg = "cant accept client connection";
+        goto passivefail;
     }
 
     if (set_non_blocking(client_socket) == -1)
     {
-        log(ERROR, "Failed on passive-accept");
-        close(client_socket);
-        return;
+        err_msg = "failed on passive-accept";
+        goto passivefail;
+
     }
 
-    connection *new_connection_instance = new_connection(client_socket, *origin_representation);
+    new_connection_instance = new_connection(client_socket, *origin_representation);
     if (new_connection_instance == NULL)
     {
-        log(ERROR, "Couldnt create new connection");
-        close(client_socket);
-        return;
+        err_msg = "couldnt create new connection";
+        goto passivefail;
+
     }
 
     sockaddr_to_human(new_connection_instance->client_addr_humanized, ADDR_STRING_BUFF_SIZE, &client_address);
@@ -207,19 +217,15 @@ void proxy_passive_accept(struct selector_key *key)
     ss = selector_register(key->s, client_socket, &proxy_handler, OP_NOOP, new_connection_instance);
     if (ss != SELECTOR_SUCCESS)
     {
-        log(ERROR, "Selector error register %s ", selector_error(ss));
-        close(client_socket);
-        return;
-        // More checks
+        err_msg = "selector error register";
+        goto passivefail;
+
     }
 
     if (origin_representation->type != ADDR_DOMAIN)
     {
         log(DEBUG, "No need to resolve name");
         new_connection_instance->stm.initial = start_connection_with_origin(key->s, new_connection_instance);
-        // new_connection_instance->stm.initial = connecting(key->mux, proxy);
-        // LOGGING LOGIC
-        // SETEO EL ESTADO DE LA STATE MACHINE EN CONNECTING (ME CONECTO DE UNA)
     }
     else
     {
@@ -228,8 +234,9 @@ void proxy_passive_accept(struct selector_key *key)
         struct selector_key *blocking_key = malloc(sizeof(*blocking_key));
         if (blocking_key == NULL)
         {
-            log(ERROR, "Error resolving name");
-            // TODO: manejar el error de malloc
+            err_msg = "can't create key for name resolution";
+            selector_unregister_fd(key->s,client_socket);
+            goto passivefail;
         }
 
         blocking_key->s = key->s;
@@ -239,10 +246,21 @@ void proxy_passive_accept(struct selector_key *key)
         pthread_t thread_id;
         if (pthread_create(&thread_id, 0, dns_resolve_blocking, blocking_key) == -1)
         {
-            log(ERROR, "Error creating new thread");
-            // TODO: manejar el error de que no se haya podido crear el thread
-            new_connection_instance->stm.initial = ERROR_ST;
+            new_connection_instance->error_data.err_msg="-ERR can't resolve destination.\r\n";
+            if(SELECTOR_SUCCESS != selector_set_interest(key->s, new_connection_instance->client_fd, OP_WRITE)){
+                err_msg = "unable to create a new thread";
+                selector_unregister_fd(key->s,client_socket);
+                goto passivefail;
+            }
+            new_connection_instance->stm.initial = ERROR_W_MESSAGE_ST;
         }
+    }
+passivefail:
+    log(ERROR,"Passive accept fail: %s",err_msg);
+    if (client_socket != -1)
+        close(client_socket);
+    if (new_connection_instance != NULL){
+        connection_destroy_referenced(new_connection_instance);
     }
 }
 
