@@ -22,7 +22,7 @@
 #define max(n1, n2) ((n1) > (n2) ? (n1) : (n2))
 
 #define MAX_SOCKETS 30
-#define BUFFSIZE 1024
+#define BUFFSIZE 2048
 #define ADDR_STRING_BUFF_SIZE 64
 #define MAX_POOL 50
 
@@ -581,11 +581,15 @@ unsigned on_read_ready_copying(struct selector_key *key)
 
     uint8_t *ptr = buffer_write_ptr(buffer, &max_size_to_read);
     readed = recv(key->fd, ptr, max_size_to_read, 0);
-    log(DEBUG, "Reading from fd=%d , bytes = %d, max_cant = %d", key->fd, readed, max_size_to_read);
-    if (readed <= 0)
+    // log(DEBUG, "Reading from fd=%d , bytes = %d, max_cant = %d", key->fd, readed, max_size_to_read);
+    if (readed > 0)
     {
-        //apagar ese fd de lectura
-        log(DEBUG, "Readed 0 or error.")
+        buffer_write_adv(buffer, readed);  
+    }
+    else
+    {
+         //apagar ese fd de lectura
+        log(ERROR, "Readed 0 or error. Error: %s",strerror(errno));
             shutdown(*copy->fd, SHUT_RD);
         copy->duplex &= ~OP_READ; // le sacamos el interes de lectura
         if (*copy->other->fd != -1)
@@ -594,10 +598,7 @@ unsigned on_read_ready_copying(struct selector_key *key)
             shutdown(*copy->other->fd, SHUT_WR);
             copy->other->duplex &= ~OP_WRITE;
         }
-    }
-    else
-    {
-        buffer_write_adv(buffer, readed);
+        //TODO: Ver si no se tendria que retornar a error y cerrar las conexiones que quedaron abiertas.
     }
 
     copy_compute_interests(key->s, copy);
@@ -620,12 +621,12 @@ unsigned on_write_ready_copying(struct selector_key *key)
     buffer *buffer = copy->write_buffer;
     unsigned ret_value = COPYING;
     uint8_t *ptr = buffer_read_ptr(buffer, &max_size_to_write);
-    sended = send(key->fd, ptr, max_size_to_write, 0); // TODO: AGREGAR MSG_NOSIGNAL
+    sended = send(key->fd, ptr, max_size_to_write, MSG_NOSIGNAL);
 
     if (sended <= 0)
     {
         //apagar ese fd de escritura
-        log(DEBUG, "Sended 0 or error");
+        log(DEBUG, "Sended 0 or error. ERRNO");
         shutdown(*copy->fd, SHUT_WR);
         copy->duplex &= ~OP_WRITE; // le sacamos el interes de escritura
         if (*copy->other->fd != -1)

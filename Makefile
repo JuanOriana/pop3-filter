@@ -1,6 +1,6 @@
 COMPILER=gcc
 CFLAGS = -Wall -fsanitize=address -g -lpthread -pthread
-
+# Ver si corresponde compilar con -o3 para optimizar
 all: clean utils main
 
 utils:
