@@ -135,6 +135,7 @@ static void connection_destroy(connection *connection);
 static unsigned on_connection_ready(struct selector_key *key);
 static void on_arrival_copying(const unsigned state, struct selector_key *key);
 static unsigned dns_resolve_done(struct selector_key *key);
+static unsigned send_err_msg(struct selector_key *key);
 
 static const struct state_definition client_states[] = {
     {
@@ -167,16 +168,17 @@ static const struct state_definition client_states[] = {
     {
         .state = ERROR_W_MESSAGE_ST,
         .on_departure = NULL,
-        .on_read_ready = NULL,
+        .on_read_ready = send_err_msg,
         .on_write_ready = NULL,
     }};
 
-// static int proxy_connect_to_origin();
+
 struct connection *new_connection(int client_fd, address_representation origin_address_representation);
 static void connection_destroy(connection *connection);
 static unsigned start_connection_with_origin(fd_selector selector, connection *connection);
 static void *dns_resolve_blocking(void *data);
-// static unsigned connect_to_host(fd_selector selector, struct connection *proxy);
+static void *connection_close_select(struct selector_key *key);
+
 
 void proxy_passive_accept(struct selector_key *key)
 {
@@ -707,4 +709,32 @@ unsigned on_write_ready_copying(struct selector_key *key)
     }
 
     return ret_value;
+}
+
+///////////////////// ERROR CON MSG  ////////////////////////////////////////
+
+static unsigned send_err_msg(struct selector_key *key) {
+    connection * connection = ATTACHMENT(key);
+    unsigned ret_val = ERROR_W_MESSAGE_ST;
+
+    if(connection->error_data.err_msg == NULL)
+        return ERROR;
+    if(connection->error_data.msg_len == 0)
+        connection->error_data.msg_len = strlen(connection->error_data.err_msg);
+
+    log(DEBUG,"Sending error to client: %s", connection->error_data.err_msg);
+    char *   msg_ptr = connection->error_data.err_msg + connection->error_data.msg_sent_size;
+    ssize_t  size_to_send = connection->error_data.msg_len - connection->error_data.msg_sent_size;
+    ssize_t  n = send(connection->client_fd, msg_ptr, size_to_send, MSG_NOSIGNAL);
+    // End states (error sending message or message complete)
+    if(n == -1) {
+        shutdown(connection->client_fd, SHUT_WR);
+        ret_val = ERROR;
+    } else {
+        connection->error_data.msg_sent_size += n;
+        if(connection->error_data.msg_sent_size == connection->error_data.msg_len)
+            return ERROR;
+    }
+    // Else, continue sending
+    return ret_val;
 }
