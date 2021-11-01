@@ -435,8 +435,12 @@ static void proxy_time_out(struct selector_key *key){
     connection * connection = ATTACHMENT(key);
 
     if(connection!= NULL && difftime(time(NULL),connection->session.last_used) >= TIMEOUT){
-        // log(DEBUG,"Destroying connection for inactivity");
+        log(DEBUG,"Destroying connection for inactivity");
         // connection_destroy(ATTACHMENT(key)); /// TODO: ARREGLAR EL PROXY_DESTROY
+        selector_unregister_fd(key->s,connection->origin_fd);
+        selector_unregister_fd(key->s,connection->client_fd);
+        close(connection->client_fd);
+        close(connection->origin_fd);
     }
 }
 
