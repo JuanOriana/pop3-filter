@@ -118,6 +118,7 @@ static void proxy_write(struct selector_key *key);
 static void proxy_block(struct selector_key *key);
 static void proxy_close(struct selector_key *key);
 static void proxy_time_out(struct selector_key *key);
+static void proxy_done(struct selector_key *key);
 
 static const struct fd_handler proxy_handler = {
     .handle_read = proxy_read,
@@ -415,11 +416,11 @@ proxy_read(struct selector_key *key)
     }
     struct state_machine *stm = &ATTACHMENT(key)->stm;
     ATTACHMENT(key)->session.last_used = time(NULL); // Update the last time used
-    stm_handler_read(stm, key);
+    const proxy_state st =  stm_handler_read(stm, key);
 
-    // if(ERROR == st || DONE == st) {
-    //     socksv5_done(key);
-    // }
+    if(ERROR_ST == st || DONE == st) {
+         proxy_done(key);
+    }
 }
 
 static void
@@ -430,8 +431,7 @@ proxy_write(struct selector_key *key)
     const proxy_state st = stm_handler_write(stm, key);
     if (st == ERROR_ST || st == DONE)
     {
-        // TODO:
-        //  socksv5_done(key);
+        proxy_done(key);
     }
 }
 
@@ -465,6 +465,17 @@ static void
 proxy_close(struct selector_key *key)
 {
     connection_destroy_referenced(ATTACHMENT(key));
+}
+
+static void proxy_done(struct selector_key *key){
+    connection * connection = ATTACHMENT(key);
+    
+    if( SELECTOR_SUCCESS != selector_unregister_fd(key->s,connection->origin_fd) && SELECTOR_SUCCESS != selector_unregister_fd(key->s,connection->client_fd))
+    {
+        log(ERROR,"Cant unregister fds");
+    }
+        close(connection->client_fd);
+        close(connection->origin_fd);
 }
 
 ///////////////////////// FUNCIONES DE STATE_DEFINITION /////////////////////////
