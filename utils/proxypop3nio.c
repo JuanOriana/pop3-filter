@@ -618,8 +618,6 @@ static void on_arrival_hello(const unsigned state, struct selector_key *key){
 unsigned on_read_ready_hello(struct selector_key *key){
     connection * connection = ATTACHMENT(key);
     struct hello_struct * hello = &connection->hello_origin;
-    unsigned ret = HELLO;
-    selector_status sel_status;
     hello_state hello_state = HELLO_FINISHED_CORRECTLY;
     uint8_t * ptr;
     size_t size;
@@ -634,19 +632,12 @@ unsigned on_read_ready_hello(struct selector_key *key){
         hello_state = parse_hello(&hello->hello_parser,&hello->buffer);
 
         if(hello->hello_parser.current_state == HELLO_FINISHED_CORRECTLY){
-
-            sel_status = selector_set_interest(key->s,connection->origin_fd,OP_NOOP); // Despues del hello el proximo que habla es el cliente.
-            if(sel_status != SELECTOR_SUCCESS){
-                return ERROR_ST;
-            }
-
-            sel_status = selector_set_interest(key->s,connection->client_fd,OP_READ); // Despues del hello el proximo que habla es el cliente.
-            if(sel_status != SELECTOR_SUCCESS){
+            if((SELECTOR_SUCCESS != selector_set_interest(key->s,connection->origin_fd,OP_NOOP)) || (SELECTOR_SUCCESS!=selector_set_interest(key->s,connection->client_fd,OP_READ))) // Despues del hello el proximo que habla es el cliente.
+            {
                 return ERROR_ST;
             }
             log(DEBUG,"HELLO FINISHED");
-            return COPYING; // TODO: TENDRIA QUE SER COMMANDS
-
+            return COPYING; // TODO TENDRIA QUE SER COMMANDS
         }else if(hello_state == HELLO_FAILED){
             log(ERROR,"Hello failed");
             connection->error_data.err_msg = "-ERR HELLO FAILED.\r\n";
@@ -654,8 +645,8 @@ unsigned on_read_ready_hello(struct selector_key *key){
                 return ERROR_ST;
             return ERROR_W_MESSAGE_ST;
         }
-
         return HELLO;
+
     }else{
         shutdown(key->fd,SHUT_RD);
         log(ERROR,"Hello recv recieved 0 or error.")
