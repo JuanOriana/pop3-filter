@@ -468,13 +468,16 @@ proxy_close(struct selector_key *key)
 
 static void proxy_done(struct selector_key *key){
     connection * connection = ATTACHMENT(key);
-    
-    if( SELECTOR_SUCCESS != selector_unregister_fd(key->s,connection->origin_fd) && SELECTOR_SUCCESS != selector_unregister_fd(key->s,connection->client_fd))
-    {
-        log(ERROR,"Cant unregister fds");
-    }
+
+    if (connection->client_fd != -1){
+        selector_unregister_fd(key->s,connection->client_fd);
         close(connection->client_fd);
+    }
+    if (connection->origin_fd != -1){
+        selector_unregister_fd(key->s,connection->origin_fd);
         close(connection->origin_fd);
+
+    }
 }
 
 ///////////////////////// FUNCIONES DE STATE_DEFINITION /////////////////////////
@@ -538,8 +541,6 @@ static void connection_destroy(connection *connection)
 {
     // CLOSE SOCKETS?
     log(DEBUG,"Closing connection");
-    close(connection->origin_fd);
-    close(connection->client_fd);
     free(connection->read_buffer->data);
     free(connection->read_buffer);
     free(connection->write_buffer->data);

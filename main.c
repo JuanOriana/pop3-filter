@@ -138,7 +138,7 @@ int main(int argc, char *argv[])
             last_used = current_time;
             selector_check_time_out(selector);
         }
-        if (ss != SELECTOR_SUCCESS)
+            if (ss != SELECTOR_SUCCESS)
         {
             log(ERROR,"%s",selector_error(ss));
             err_msg = "serving";
