@@ -168,8 +168,8 @@ static const struct state_definition client_states[] = {
     {
         .state = ERROR_W_MESSAGE_ST,
         .on_departure = NULL,
-        .on_read_ready = send_err_msg,
-        .on_write_ready = NULL,
+        .on_read_ready = NULL,
+        .on_write_ready = send_err_msg,
     }};
 
 
@@ -325,7 +325,7 @@ static unsigned start_connection_with_origin(fd_selector selector, connection *c
 {
     address_representation origin_address_representation = connection->origin_address_representation;
     connection->origin_fd = socket(origin_address_representation.domain, SOCK_STREAM, IPPROTO_TCP);
-
+    log(DEBUG, "origin socket = %d",connection->origin_fd);
     if (connection->origin_fd == -1)
         goto connectionfinally;
     if (set_non_blocking(connection->origin_fd) == -1)
@@ -385,10 +385,14 @@ static unsigned on_connection_ready(struct selector_key *key)
     {
         log(ERROR, "Problem connecting to origin server in on_connection-ready");
         connection->error_data.err_msg = "-ERR Connection refused.\r\n";
-        if (SELECTOR_SUCCESS == selector_set_interest(key->s, connection->client_fd, OP_WRITE))
+        if (SELECTOR_SUCCESS == selector_set_interest(key->s, connection->client_fd, OP_WRITE)){
+            log(ERROR, "IF");
             ret = ERROR_W_MESSAGE_ST;
-        else
+        }
+        else{
+            log(ERROR, "ELSE");
             ret = ERROR_ST;
+        }
     }
     else if (SELECTOR_SUCCESS == selector_set_interest(key->s, key->fd, OP_READ))
     {
@@ -731,6 +735,8 @@ static unsigned send_err_msg(struct selector_key *key) {
     ssize_t  size_to_send = connection->error_data.msg_len - connection->error_data.msg_sent_size;
     ssize_t  n = send(connection->client_fd, msg_ptr, size_to_send, MSG_NOSIGNAL);
     // End states (error sending message or message complete)
+    log(DEBUG,"n value: %dERROR : %s. key->fd %d , client_fd -> %d", (int)n,strerror(errno),key->fd,connection->client_fd);
+
     if(n == -1) {
         shutdown(connection->client_fd, SHUT_WR);
         ret_val = ERROR;
