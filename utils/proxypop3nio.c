@@ -540,10 +540,10 @@ static void connection_destroy(connection *connection)
     log(DEBUG,"Closing connection");
     close(connection->origin_fd);
     close(connection->client_fd);
-    free(&connection->read_buffer->data);
-    free(&connection->read_buffer);
-    free(&connection->write_buffer->data);
-    free(&connection->write_buffer);
+    free(connection->read_buffer->data);
+    free(connection->read_buffer);
+    free(connection->write_buffer->data);
+    free(connection->write_buffer);
     free(connection);
 }
 
