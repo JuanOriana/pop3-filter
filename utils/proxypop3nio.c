@@ -726,7 +726,7 @@ static unsigned send_err_msg(struct selector_key *key) {
     unsigned ret_val = ERROR_W_MESSAGE_ST;
 
     if(connection->error_data.err_msg == NULL)
-        return ERROR;
+        return ERROR_ST;
     if(connection->error_data.msg_len == 0)
         connection->error_data.msg_len = strlen(connection->error_data.err_msg);
 
@@ -739,11 +739,11 @@ static unsigned send_err_msg(struct selector_key *key) {
 
     if(n == -1) {
         shutdown(connection->client_fd, SHUT_WR);
-        ret_val = ERROR;
+        ret_val = ERROR_ST;
     } else {
         connection->error_data.msg_sent_size += n;
         if(connection->error_data.msg_sent_size == connection->error_data.msg_len)
-            return ERROR;
+            return ERROR_ST;
     }
     // Else, continue sending
     return ret_val;
