@@ -3,8 +3,8 @@
 // Defined in RFC-1939
 #define HELLO_MAX_MSG_SIZE 512
 
-static const char *pop3_positive_responde = "+OK";
-static const size_t pop3_positive_responde_size = 3;
+static const char *pop3_positive_responde = "+OK ";
+static const size_t pop3_positive_responde_size = 4;
 
 static const char *crlf_pair = "\r\n";
 
