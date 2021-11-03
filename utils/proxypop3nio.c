@@ -613,31 +613,42 @@ static void on_arrival_hello(const unsigned state, struct selector_key *key){
 
     hello_parser_init(&hello_struct->hello_parser);
     hello_struct->buffer = *connection->write_buffer;
+    connection->hello_client.buffer = *connection->read_buffer;
 }
 
 unsigned on_read_ready_hello(struct selector_key *key){
     connection * connection = ATTACHMENT(key);
-    struct hello_struct * hello = &connection->hello_origin;
+    struct hello_struct * hello_origin = &connection->hello_origin;
+    struct hello_struct * hello_client = &connection->hello_client;
     hello_state hello_state = HELLO_FINISHED_CORRECTLY;
-    uint8_t * ptr;
+    uint8_t * ptr,*ptr_write;
     size_t size;
     ssize_t readed;
 
-    ptr = buffer_write_ptr(&hello->buffer,&size);
+    ptr = buffer_write_ptr(&hello_origin->buffer,&size);
+   
     readed = recv(key->fd,ptr,size,0);
+    
+    ptr_write = buffer_write_ptr(&hello_client->buffer,&size);
+
+    memcpy(ptr_write,ptr,readed);
+    buffer_write_adv(&hello_client->buffer,readed);
+
 
     if(readed > 0){
-        buffer_write_adv(&hello->buffer,readed);
+        buffer_write_adv(&hello_origin->buffer,readed);
 
-        hello_state = parse_hello(&hello->hello_parser,&hello->buffer);
+        hello_state = parse_hello(&hello_origin->hello_parser,&hello_origin->buffer);
+        
 
-        if(hello->hello_parser.current_state == HELLO_FINISHED_CORRECTLY){
-            if((SELECTOR_SUCCESS != selector_set_interest(key->s,connection->origin_fd,OP_NOOP)) || (SELECTOR_SUCCESS!=selector_set_interest(key->s,connection->client_fd,OP_READ))) // Despues del hello el proximo que habla es el cliente.
+        if(hello_state== HELLO_FINISHED_CORRECTLY){
+
+            if((SELECTOR_SUCCESS != selector_set_interest(key->s,connection->origin_fd,OP_NOOP)) || (SELECTOR_SUCCESS!=selector_set_interest(key->s,connection->client_fd, OP_WRITE))) // Despues del hello el proximo que habla es el cliente.
             {
                 return ERROR_ST;
             }
-            log(DEBUG,"HELLO FINISHED");
-            return COPYING; // TODO TENDRIA QUE SER COMMANDS
+            log(DEBUG,"Hello read finished succesfully");
+            return HELLO;
         }else if(hello_state == HELLO_FAILED){
             log(ERROR,"Hello failed");
             connection->error_data.err_msg = "-ERR HELLO FAILED.\r\n";
@@ -658,9 +669,10 @@ unsigned on_read_ready_hello(struct selector_key *key){
 }
 
 unsigned on_write_ready_hello(struct selector_key *key){
-    struct hello_struct * hello_struct = &ATTACHMENT(key)->hello_origin;
+    struct hello_struct * hello_origin = &ATTACHMENT(key)->hello_origin;
+    struct hello_struct * hello_client = &ATTACHMENT(key)->hello_client;
     struct connection * connection = ATTACHMENT(key);
-    buffer * buffer = &hello_struct->buffer;
+    buffer * buffer = &hello_client->buffer;
     uint8_t * ptr;
     size_t size;
     ssize_t sended;
@@ -670,9 +682,9 @@ unsigned on_write_ready_hello(struct selector_key *key){
 
     if(sended>0){
         buffer_read_adv(buffer,sended);
-        if(hello_finished(hello_struct->hello_parser.current_state)){
+        if(hello_finished(hello_origin->hello_parser.current_state)){
             log(DEBUG,"Hello finished succesfully");
-            if((SELECTOR_SUCCESS == selector_set_interest(key->s,connection->origin_fd,OP_WRITE))&& (SELECTOR_SUCCESS == selector_set_interest_key(key,OP_NOOP))) // TODO: CHEQUEAR SI ES CORRECTO ESTE INTERES DE CLIENT
+            if((SELECTOR_SUCCESS == selector_set_interest(key->s,connection->origin_fd,OP_NOOP))&& (SELECTOR_SUCCESS == selector_set_interest(key->s,connection->client_fd,OP_READ))) // TODO: CHEQUEAR SI ES CORRECTO ESTE INTERES DE CLIENT
             {
                 return COPYING; //TODO: deberia ser COMMANDS
             }else{
