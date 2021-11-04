@@ -12,12 +12,13 @@
 #include <sys/time.h>
 #include <limits.h>
 #include "../include/args.h"
-#include "../utils/include/logger.h"
-#include "../utils/include/buffer.h"
-#include "../utils/include/selector.h"
+#include "./include/logger.h"
+#include "./include/buffer.h"
+#include "./include/selector.h"
 #include <sys/signal.h>
-#include "../utils/include/stm.h"
-#include "include/proxypop3nio.h"
+#include "./include/stm.h"
+#include "./include/proxypop3nio.h"
+#include "../parsers/include/helloParser.h"
 
 #define max(n1, n2) ((n1) > (n2) ? (n1) : (n2))
 
@@ -41,6 +42,11 @@ struct copy
     fd_interest duplex;
 
     struct copy *other;
+};
+
+struct hello_struct {
+    buffer  buffer;
+    hello_parser hello_parser;
 };
 
 struct session{
@@ -68,8 +74,10 @@ typedef struct connection
     buffer *read_buffer;
     buffer *write_buffer;
 
+    struct hello_struct hello_client;
     struct copy copy_client;
 
+    struct hello_struct hello_origin;
     struct copy copy_origin;
 
     address_representation origin_address_representation;
@@ -94,6 +102,7 @@ typedef enum
 {
     RESOLVING,
     CONNECTING,
+    HELLO,
     COPYING,
     DONE,
     ERROR_ST,
@@ -131,10 +140,13 @@ static const struct fd_handler proxy_handler = {
 
 unsigned on_read_ready_copying(struct selector_key *key);
 unsigned on_write_ready_copying(struct selector_key *key);
+unsigned on_read_ready_hello(struct selector_key *key);
+unsigned on_write_ready_hello(struct selector_key *key);
 static void connection_destroy_referenced(connection *connection);
 static void connection_destroy(connection *connection);
 static unsigned on_connection_ready(struct selector_key *key);
 static void on_arrival_copying(const unsigned state, struct selector_key *key);
+static void on_arrival_hello(const unsigned state, struct selector_key *key);
 static unsigned dns_resolve_done(struct selector_key *key);
 static unsigned send_err_msg(struct selector_key *key);
 
@@ -146,6 +158,13 @@ static const struct state_definition client_states[] = {
     {
         .state = CONNECTING,
         .on_write_ready = on_connection_ready,
+    },
+    {
+        .state = HELLO,
+        .on_arrival = on_arrival_hello,
+        .on_read_ready = on_read_ready_hello,
+        .on_write_ready = on_write_ready_hello,
+
     },
     {
         .state = COPYING,
@@ -399,7 +418,7 @@ static unsigned on_connection_ready(struct selector_key *key)
         struct sockaddr_storage *origin = &connection->origin_address_representation.addr.address_storage;
         sockaddr_to_human(connection->origin_addr_humanized, ADDR_STRING_BUFF_SIZE, origin);
         log(INFO, "Connection successful. Client Address: %s; Origin Address: %s.", connection->client_addr_humanized, connection->origin_addr_humanized);
-        ret = COPYING;
+        ret = HELLO; // estaba copying
         // deberia ret = HELLO;
     }
     return ret;
@@ -455,8 +474,7 @@ proxy_block(struct selector_key *key)
 
     if (st == ERROR_ST || st == DONE)
     {
-        // TODO:
-        //  socksv5_done(key);
+        proxy_done(key);
     }
 }
 
@@ -585,6 +603,100 @@ void connection_pool_destroy()
         next = curr->next;
         connection_destroy(curr);
     }
+}
+
+/////////////////// FUNCIONES DEL ESTADO HELLO ////////////////////////////////////////////
+
+static void on_arrival_hello(const unsigned state, struct selector_key *key){
+    connection * connection = ATTACHMENT(key);
+    struct hello_struct * hello_struct = &connection->hello_origin;
+
+    hello_parser_init(&hello_struct->hello_parser);
+    hello_struct->buffer = *connection->write_buffer;
+    connection->hello_client.buffer = *connection->read_buffer;
+}
+
+unsigned on_read_ready_hello(struct selector_key *key){
+    connection * connection = ATTACHMENT(key);
+    struct hello_struct * hello_origin = &connection->hello_origin;
+    struct hello_struct * hello_client = &connection->hello_client;
+    hello_state hello_state = HELLO_FINISHED_CORRECTLY;
+    uint8_t * ptr,*ptr_write;
+    size_t size;
+    ssize_t readed;
+
+    ptr = buffer_write_ptr(&hello_origin->buffer,&size);
+   
+    readed = recv(key->fd,ptr,size,0);
+    
+    ptr_write = buffer_write_ptr(&hello_client->buffer,&size);
+
+    memcpy(ptr_write,ptr,readed);
+    buffer_write_adv(&hello_client->buffer,readed);
+
+
+    if(readed > 0){
+        buffer_write_adv(&hello_origin->buffer,readed);
+
+        hello_state = parse_hello(&hello_origin->hello_parser,&hello_origin->buffer);
+        
+
+        if(hello_state== HELLO_FINISHED_CORRECTLY){
+
+            if((SELECTOR_SUCCESS != selector_set_interest(key->s,connection->origin_fd,OP_NOOP)) || (SELECTOR_SUCCESS!=selector_set_interest(key->s,connection->client_fd, OP_WRITE))) // Despues del hello el proximo que habla es el cliente.
+            {
+                return ERROR_ST;
+            }
+            log(DEBUG,"Hello read finished succesfully");
+            return HELLO;
+        }else if(hello_state == HELLO_FAILED){
+            log(ERROR,"Hello failed");
+            connection->error_data.err_msg = "-ERR HELLO FAILED.\r\n";
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connection->client_fd, OP_WRITE))
+                return ERROR_ST;
+            return ERROR_W_MESSAGE_ST;
+        }
+        return HELLO;
+
+    }else{
+        shutdown(key->fd,SHUT_RD);
+        log(ERROR,"Hello recv recieved 0 or error.")
+        connection->error_data.err_msg = "-ERR HELLO FAILED.\r\n";
+        if (SELECTOR_SUCCESS != selector_set_interest(key->s, connection->client_fd, OP_WRITE))
+            return ERROR_ST;
+        return ERROR_W_MESSAGE_ST;
+    }
+}
+
+unsigned on_write_ready_hello(struct selector_key *key){
+    struct hello_struct * hello_origin = &ATTACHMENT(key)->hello_origin;
+    struct hello_struct * hello_client = &ATTACHMENT(key)->hello_client;
+    struct connection * connection = ATTACHMENT(key);
+    buffer * buffer = &hello_client->buffer;
+    uint8_t * ptr;
+    size_t size;
+    ssize_t sended;
+
+    ptr = buffer_read_ptr(buffer,&size);
+    sended = send(key->fd,ptr,size,MSG_NOSIGNAL);
+
+    if(sended>0){
+        buffer_read_adv(buffer,sended);
+        if(hello_finished(hello_origin->hello_parser.current_state)){
+            log(DEBUG,"Hello finished succesfully");
+            if((SELECTOR_SUCCESS == selector_set_interest(key->s,connection->origin_fd,OP_NOOP))&& (SELECTOR_SUCCESS == selector_set_interest(key->s,connection->client_fd,OP_READ))) // TODO: CHEQUEAR SI ES CORRECTO ESTE INTERES DE CLIENT
+            {
+                return COPYING; //TODO: deberia ser COMMANDS
+            }else{
+                log(ERROR,"Set interests hello failed");
+                return ERROR_ST;
+            }
+        }else if(!buffer_can_read(buffer) && (SELECTOR_SUCCESS == selector_set_interest(key->s,connection->origin_fd,OP_READ)) && (SELECTOR_SUCCESS == selector_set_interest(key->s,connection->client_fd,OP_NOOP))){
+            return HELLO;
+        }
+    }
+    log(ERROR,"sended 0");
+    return ERROR_ST;
 }
 
 /////////////////// FUNCIONES DE EL ESTADO COPYING ////////////////////////////////////////
