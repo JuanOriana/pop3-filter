@@ -20,7 +20,7 @@
 #include <sys/signal.h>
 #include "./utils/include/stm.h"
 #include "./include/main.h"
-#include "./utils/include/proxypop3nio.h"
+#include "proxy/include/proxypop3nio.h"
 
 struct pop3_proxy_args pop3_proxy_args;
 
