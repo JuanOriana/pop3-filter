@@ -12,13 +12,13 @@
 #include <sys/time.h>
 #include <limits.h>
 #include "../include/args.h"
-#include "./include/logger.h"
-#include "./include/buffer.h"
-#include "./include/selector.h"
+#include "../utils/include/logger.h"
+#include "../utils/include/buffer.h"
+#include "../utils/include/selector.h"
 #include <sys/signal.h>
-#include "./include/stm.h"
+#include "../utils/include/stm.h"
 #include "./include/proxypop3nio.h"
-#include "../parsers/include/helloParser.h"
+#include "../parsers/include/hello_parser.h"
 
 #define max(n1, n2) ((n1) > (n2) ? (n1) : (n2))
 
