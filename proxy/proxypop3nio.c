@@ -11,6 +11,7 @@
 #include <netinet/in.h>
 #include <sys/time.h>
 #include <limits.h>
+#include <fcntl.h>
 #include "../include/args.h"
 #include "../utils/include/logger.h"
 #include "../utils/include/buffer.h"
@@ -56,8 +57,24 @@ struct session{
 typedef struct error_data {
     char * err_msg;
     size_t msg_len;
-    size_t msg_sent_size;
+    size_t msg_sent_size; 
 } error_data;
+
+typedef enum
+{
+    FILTER_START,
+    FILTER_WORKING,
+    FILTER_FINISHED_SENDING,
+    FILTER_ENDING,
+    FILTER_CLOSE
+}filter_state;
+
+struct filter_data{
+    int     write_pipe[2];
+    int     read_pipe[2];
+    pid_t   slave_proc_pid;
+    filter_state state;
+};
 
 typedef struct connection
 {
@@ -65,6 +82,7 @@ typedef struct connection
     int origin_fd;
 
     struct session session;
+    struct filter_data filter;
 
     char client_addr_humanized[ADDR_STRING_BUFF_SIZE];
     char origin_addr_humanized[ADDR_STRING_BUFF_SIZE];
@@ -73,12 +91,15 @@ typedef struct connection
 
     buffer *read_buffer;
     buffer *write_buffer;
+    buffer *filter_buffer;
 
     struct hello_struct hello_client;
     struct copy copy_client;
 
     struct hello_struct hello_origin;
     struct copy copy_origin;
+
+    struct copy copy_filter;
 
     address_representation origin_address_representation;
 
@@ -109,9 +130,11 @@ typedef enum
     ERROR_W_MESSAGE_ST
 } proxy_state;
 
+
+
 typedef struct state_definition state_definition;
 
-/** obtiene el struct (socks5 *) desde la llave de selección  */
+/** obtiene el struct (connection *) desde la llave de selección  */
 #define ATTACHMENT(key) ((struct connection *)(key)->data)
 
 /* declaración forward de los handlers de selección de una conexión
@@ -292,8 +315,8 @@ struct connection *new_connection(int client_fd, address_representation origin_a
 {
     connection *new_connection;
 
-    buffer *read_buf, *write_buf;
-    uint8_t *direct_buff, *direct_buff_origin;
+    buffer *read_buf, *write_buf,*filter_buf;
+    uint8_t *direct_buff, *direct_buff_origin,*direct_buff_filter;
 
     // Verifico si es el primero
     if (connection_pool == NULL)
@@ -304,11 +327,14 @@ struct connection *new_connection(int client_fd, address_representation origin_a
             return NULL;
         }
         direct_buff = malloc(BUFFSIZE);
+        direct_buff_filter = malloc(BUFFSIZE);
         direct_buff_origin = malloc(BUFFSIZE);
         read_buf = malloc(sizeof(buffer));
         buffer_init(read_buf, BUFFSIZE, direct_buff); // Errores?
         write_buf = malloc(sizeof(buffer));
         buffer_init(write_buf, BUFFSIZE, direct_buff_origin); // Errores?
+        filter_buf = malloc(sizeof(buffer));
+        buffer_init(filter_buf, BUFFSIZE, direct_buff_filter); // Errores?
     }
     else
     {
@@ -316,14 +342,17 @@ struct connection *new_connection(int client_fd, address_representation origin_a
         connection_pool = connection_pool->next;
         read_buf = new_connection->read_buffer;
         write_buf = new_connection->write_buffer;
+        filter_buf = new_connection->filter_buffer;
         buffer_reset(read_buf);
         buffer_reset(write_buf);
+        buffer_reset(filter_buf);
     }
 
     new_connection->client_fd = client_fd;
     new_connection->origin_fd = -1;
     new_connection->read_buffer = read_buf;
     new_connection->write_buffer = write_buf;
+    new_connection->filter_buffer = filter_buf;
     new_connection->origin_address_representation = origin_address_representation;
     new_connection->next = NULL;
     new_connection->references = 1;
@@ -557,10 +586,12 @@ static unsigned dns_resolve_done(struct selector_key *key)
  */
 static void connection_destroy(connection *connection)
 {
-    // CLOSE SOCKETS?
+    // CLOSE SOCKETS? 
+    // TODO: Ver si metemos el destroy filter aca
     log(DEBUG,"Closing connection");
     free(connection->read_buffer->data);
     free(connection->read_buffer);
+
     free(connection->write_buffer->data);
     free(connection->write_buffer);
     free(connection);
@@ -699,6 +730,82 @@ unsigned on_write_ready_hello(struct selector_key *key){
     return ERROR_ST;
 }
 
+/////////////////// FUNCIONES DEL FILTER //////////////////////////////////////////////////
+
+static void filter_working_blocking(struct selector_key *key){
+    //TODO
+}
+
+static void filter_init(struct selector_key * key){
+    connection * connection = ATTACHMENT(key);
+    struct filter_data * filter = &connection->filter;
+    pid_t pid;
+
+    for(int i=0;i<2;i++){
+        filter->write_pipe[i]=-1;
+        filter->read_pipe[i]=-1;
+    }
+
+    if(pipe(filter->write_pipe)<0){
+        log(ERROR,"Error when creating writing pipe for filter");
+    }
+
+    if(pipe(filter->read_pipe)<0){
+        log(ERROR,"Error when creating writing pipe for filter");
+    }
+
+    if((pid = fork()) == 0){
+        filter->slave_proc_pid = -1;
+
+        //Cerramos la salida, entrada y salida de errores estandar para el proceso hijo ya que le corresponde al padre en este caso.
+        close(STDOUT_FILENO);
+        close(STDIN_FILENO);
+        close(STDERR_FILENO);
+        //Cerramos las partes del pipe que no vamos a utilizar
+        close(filter->read_pipe[1]); // Recordar pipe[1] es para escritura
+        close(filter->write_pipe[0]);
+
+        //Redireccionamos la entrada estandar al pipe de lectura del proceso y la salida estandar al pipe del proceso
+        if((dup2(filter->read_pipe[0],STDIN_FILENO)<0) || (dup2(filter->write_pipe[1],STDOUT_FILENO)<0)){
+            log(ERROR,"Error when dup2 on filter process");
+        }
+
+        open(pop3_proxy_args.error_file,O_WRONLY | O_APPEND); // O_APPEND indica que escriba a partir del final del archivo
+
+        //TODO: Setear variables de entorno
+
+        if(execl("/bin/sh","sh","-c",pop3_proxy_args.filter,(char * )0) < 0){
+            log(ERROR,"Executing command");
+            close(filter->read_pipe[0]);
+            close(filter->write_pipe[1]);
+        }
+
+        filter_working_blocking(key);
+
+    }else{
+        filter->slave_proc_pid = pid;
+        
+        //Cerramos las partes del pipe que no vamos a utilizar
+        close(filter->write_pipe[1]);
+        close(filter->read_pipe[0]);
+
+        if( (selector_fd_set_nio(filter->write_pipe[0]) < 0) || (selector_fd_set_nio(filter->read_pipe[1]) < 0)){
+            log(ERROR,"Failed to set not blocking to filter sockets on proxy");
+            // TODO SI HAY QUE ABORTAR LA CONEXCION O QUE.
+        }
+
+        if( (selector_register(key->s,filter->write_pipe[0],&proxy_handler,OP_NOOP,connection)!= SELECTOR_SUCCESS) || (selector_register(key->s,filter->read_pipe[1],&proxy_handler,OP_NOOP,connection)!= SELECTOR_SUCCESS) )
+        {
+            log(ERROR,"Failed to register filter fds");
+            // TODO : VER Q MANEJO HACER ACA
+        }
+
+        connection->references+=2;
+
+    }
+
+}
+
 /////////////////// FUNCIONES DE EL ESTADO COPYING ////////////////////////////////////////
 
 static struct copy *copy_ptr(struct selector_key *key)
@@ -718,6 +825,7 @@ static void on_arrival_copying(const unsigned state, struct selector_key *key)
     connection *connection = ATTACHMENT(key);
     struct copy *copy_client = &(connection->copy_client);
     struct copy *copy_origin = &(connection->copy_origin);
+    struct copy *copy_filter = &(connection->copy_filter);
 
     copy_client->fd = &connection->client_fd;
     copy_client->read_buffer = connection->read_buffer;
@@ -730,6 +838,13 @@ static void on_arrival_copying(const unsigned state, struct selector_key *key)
     copy_origin->write_buffer = connection->read_buffer;
     copy_origin->duplex = OP_READ | OP_WRITE; // TODO: Asignar dependiendo de las reglas de pop 3
     copy_origin->other = copy_client;
+
+    copy_filter->read_buffer = connection->filter_buffer;
+    copy_filter->write_buffer = connection->write_buffer;
+    copy_filter->duplex = OP_READ | OP_WRITE; // TODO: Asignar dependiendo de las reglas de pop 3
+    copy_filter->other = NULL;
+
+    filter_init(key);
 }
 
 static fd_interest copy_compute_interests(fd_selector s, struct copy *copy)
@@ -816,7 +931,7 @@ unsigned on_write_ready_copying(struct selector_key *key)
     if (sended <= 0)
     {
         // apagar ese fd de escritura
-        log(DEBUG, "Sended 0 or error. ERRNO");
+        log(DEBUG, "Sended 0 or error.");
         shutdown(*copy->fd, SHUT_WR);
         copy->duplex &= ~OP_WRITE; // le sacamos el interes de escritura
         if (*copy->other->fd != -1)
