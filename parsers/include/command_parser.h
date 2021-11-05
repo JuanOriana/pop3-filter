@@ -6,7 +6,7 @@
 
 #include "../../utils/include/buffer.h"
 
-#define SIZE_OF_CMD_TYPES  9
+#define SIZE_OF_CMD_TYPES  8
 
 typedef enum command_t {
     CMD_NOT_RECOGNIZED     = -1,
@@ -20,13 +20,13 @@ typedef enum command_t {
     CMD_UIDL               =  7,
 } command_t;
 
-typedef struct command {
+typedef struct command_instance {
     command_t    type;
     bool         is_multi;
     bool         indicator;
     void *       data;
-    struct command *    next;
-} command;
+    struct command_instance *    next;
+} command_instance;
 
 typedef enum command_state {
     COMMAND_TYPE,
@@ -40,17 +40,17 @@ typedef struct command_parser {
     int crlf_state;  //0 NONE, 1 /r READ, 2 /n READ
     int state_size;
     int args_size;
-    int  invalid_size;
+    int    invalid_size;
     bool   invalid_type[SIZE_OF_CMD_TYPES];
     command_state state;
-    command current_command;
+    command_instance current_command;
 } command_parser;
 
 /** inicializa el parser */
 void command_parser_init(command_parser * parser);
 
 /** entrega un byte al parser. retorna true si se llego al final  */
-command_state command_parser_feed(command_parser * parser, const char c, command * commands, bool * finished);
+command_state command_parser_feed(command_parser * parser, const char c, command_instance * commands, bool * finished);
 
 /**
  * por cada elemento del buffer llama a `commandParserFeed' hasta que
@@ -59,11 +59,10 @@ command_state command_parser_feed(command_parser * parser, const char c, command
  * @param errored parametro de salida. si es diferente de NULL se deja dicho
  *   si el parsing se debió a una condición de error
  */
-command_state command_parser_consume(command_parser * parser,
-                                     buffer* buffer, command * commands, bool pipelining, bool * has_command_changed);
+command_state command_parser_consume(command_parser * parser, buffer* buffer, command_instance * commands, bool pipelining, bool * finished);
 
-char * ger_user(const command command);
+char * ger_user(const command_instance command);
 //Returns next command in list (if any)
-command* command_delete(command * command);
+command_instance* command_delete(command_instance * command);
 
 #endif

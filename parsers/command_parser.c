@@ -46,10 +46,10 @@ static const command_data all_command_data[] = {
 };
 
 
-static void command_init(command * command);
+static void command_init(command_instance * command);
 
-static void handle_command_parsed(command * current_command,
-                                 command_parser * parser, command * commands, bool * finished, bool not_match);
+static void handle_command_parsed(command_instance * current_command,
+                                 command_parser * parser, command_instance * commands, bool * finished, bool not_match);
 
 
 void command_parser_init(command_parser * parser) {
@@ -59,8 +59,8 @@ void command_parser_init(command_parser * parser) {
     parser->args_size      = 0;
 }
 
-command_state command_parser_feed(command_parser * parser, const uint8_t c, command * commands, bool * has_command_changed) {
-    command * current_command = &parser->current_command;
+command_state command_parser_feed(command_parser * parser, const char c, command_instance * commands, bool * finished) {
+    command_instance * current_command = &parser->current_command;
 
     if(parser->line_size == 0) {
         command_init(current_command);
@@ -79,7 +79,7 @@ command_state command_parser_feed(command_parser * parser, const uint8_t c, comm
                         if(toupper(c) != all_command_data[i].name[parser->line_size]) {
                             parser->invalid_type[i] = true;
                             parser->invalid_size++;
-                        } else if(parser->line_size == all_command_data[i].length-1) {
+                        } else if(parser->line_size == all_command_data[i].len-1) {
                             current_command->type = all_command_data[i].type;
                             parser->state_size = 0;
                             if(all_command_data[i].max_args > 0) {
@@ -95,7 +95,7 @@ command_state command_parser_feed(command_parser * parser, const uint8_t c, comm
                         parser->state = COMMAND_ERROR;
                 }
             } else
-                handle_command_parsed(current_command, parser, commands, has_command_changed, true);
+                handle_command_parsed(current_command, parser, commands, finished, true);
             break;
 
         case COMMAND_ARGS:
@@ -123,7 +123,7 @@ command_state command_parser_feed(command_parser * parser, const uint8_t c, comm
                     ((uint8_t *)current_command->data)[parser->state_size-1] = 0;     //username null terminated
                 if(parser->state_size > 1)
                     parser->args_size++;
-                if(all_command_data[current_command->type].args_sizeMin <= parser->args_size && parser->args_size <= all_command_data[current_command->type].max_args) {
+                if(all_command_data[current_command->type].min_args <= parser->args_size && parser->args_size <= all_command_data[current_command->type].max_args) {
                     parser->state     = COMMAND_CRLF;
                 } else
                     parser->state     = COMMAND_ERROR;
@@ -133,10 +133,10 @@ command_state command_parser_feed(command_parser * parser, const uint8_t c, comm
                     ((uint8_t *)current_command->data)[parser->state_size-1] = 0;     //username null terminated
                 if(parser->state_size > 1)
                     parser->args_size++;
-                if(all_command_data[current_command->type].args_sizeMin <= parser->args_size && parser->args_size <= all_command_data[current_command->type].max_args) {
-                    handle_command_parsed(current_command, parser, commands, has_command_changed, false);
+                if(all_command_data[current_command->type].min_args <= parser->args_size && parser->args_size <= all_command_data[current_command->type].max_args) {
+                    handle_command_parsed(current_command, parser, commands, finished, false);
                 } else
-                    handle_command_parsed(current_command, parser, commands, has_command_changed, true);
+                    handle_command_parsed(current_command, parser, commands, finished, true);
             } else {
                 parser->crlf_state = 0;
                 parser->state = COMMAND_ERROR;
@@ -147,7 +147,7 @@ command_state command_parser_feed(command_parser * parser, const uint8_t c, comm
             if(c == '\r' && parser->crlf_state == 0) {
                 parser->crlf_state = 1;
             } else if(c == '\n' && parser->crlf_state == 1){
-                handle_command_parsed(current_command, parser, commands, has_command_changed, false);
+                handle_command_parsed(current_command, parser, commands, finished, false);
             }else {
                 parser->state = COMMAND_ERROR;
             }
@@ -157,56 +157,56 @@ command_state command_parser_feed(command_parser * parser, const uint8_t c, comm
             if(c == '\r' && parser->crlf_state == 0) {
                 parser->crlf_state = 1;
             } else if(c == '\n' && parser->crlf_state == 1 ){
-                handle_command_parsed(current_command, parser, commands, has_command_changed, true);
+                handle_command_parsed(current_command, parser, commands, finished, true);
             }else{
                 parser->crlf_state = 0;
             }
             break;
         default:
-            fail("Command parser not reconize state: %d", parser->state);
+            log(ERROR,"Command parser not reconize state: %d", parser->state);
     }
     if(parser->line_size++ == MAX_MSG_SIZE || (parser->state == COMMAND_ARGS && parser->state_size == MAX_ARG_SIZE))
         parser->state = COMMAND_ERROR;
     return parser->state;
 }
 
-command_state command_parser_feed(command_parser * parser, buffer buffer, command * commands, bool pipelining, bool * has_command_changed) {
+command_state command_parser_consume(command_parser * parser, buffer* buffer, command_instance * commands, bool pipelining, bool * finished) {
     command_state state = parser->state;
 
     while(canProcess(buffer)) {
         const uint8_t c = processAByte(buffer);
-        state = commandParserFeed(parser, c, commands, has_command_changed);
-        if(!pipelining && *has_command_changed) {
+        state = command_parser_feed(parser, c, commands, finished);
+        if(!pipelining && *finished) {
             break;
         }
     }
     return state;
 }
 
-char * get_user(const command command) {
+char * get_user(const command_instance command) {
     if(command.type == CMD_APOP || command.type == CMD_USER)
         return (char * ) command.data;
     return NULL;
 }
 
-command* command_delete(command * command) {
-    command* next = command->next;
+command_instance* command_delete(command_instance * command) {
+    command_instance * next = command->next;
     if(command == NULL)
-        return;
+        return NULL;
     if(command->data != NULL)
         free(command->data);
     free(command);
     return next;
 }
 
-static void command_init(command * command) {
+static void command_init(command_instance * command) {
     command->type = CMD_NOT_RECOGNIZED;
     command->indicator = false;
     command->data = NULL;
 }
 
-static void handle_command_parsed(command * current_command, command_parser * parser, command * commands, bool * has_command_changed, bool not_match) {
-    command * new_command = malloc(sizeof(command));
+static void handle_command_parsed(command_instance * current_command, command_parser * parser, command_instance * commands, bool * finished, bool not_match) {
+    command_instance * new_command = malloc(sizeof(command_instance));
 
     if(not_match) {
         current_command->type = CMD_NOT_RECOGNIZED;
@@ -217,8 +217,8 @@ static void handle_command_parsed(command * current_command, command_parser * pa
     }
 
     current_command->is_multi = IS_MULTILINE(current_command, parser->args_size);
-    memcpy(new_command, current_command, sizeof(command));
-    command * last_command = commands;
+    memcpy(new_command, current_command, sizeof(command_instance));
+    command_instance * last_command = commands;
     while (last_command && last_command->next){
         last_command = last_command->next;
     }
@@ -229,5 +229,5 @@ static void handle_command_parsed(command * current_command, command_parser * pa
     parser->state     = COMMAND_TYPE;
     parser->line_size  = -1;
     parser->state_size =  0;
-    *has_command_changed = true;
+    *finished = true;
 }
