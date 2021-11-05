@@ -173,8 +173,8 @@ command_state command_parser_feed(command_parser * parser, const char c, command
 command_state command_parser_consume(command_parser * parser, buffer* buffer, command_instance * commands, bool pipelining, bool * finished) {
     command_state state = parser->state;
 
-    while(canProcess(buffer)) {
-        const uint8_t c = processAByte(buffer);
+    while(buffer_can_read(buffer)) {
+        const uint8_t c = buffer_read(buffer);
         state = command_parser_feed(parser, c, commands, finished);
         if(!pipelining && *finished) {
             break;
