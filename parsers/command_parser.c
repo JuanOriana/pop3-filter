@@ -189,12 +189,14 @@ char * get_user(const command command) {
     return NULL;
 }
 
-void command_delete(command * command) {
+command* command_delete(command * command) {
+    command* next = command->next;
     if(command == NULL)
         return;
     if(command->data != NULL)
         free(command->data);
     free(command);
+    return next;
 }
 
 static void command_init(command * command) {

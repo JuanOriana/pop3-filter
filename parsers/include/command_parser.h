@@ -63,7 +63,7 @@ command_state command_parser_consume(command_parser * parser,
                                      buffer* buffer, command * commands, bool pipelining, bool * has_command_changed);
 
 char * ger_user(const command command);
-
-void command_delete(command * command);
+//Returns next command in list (if any)
+command* command_delete(command * command);
 
 #endif
