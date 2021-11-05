@@ -37,6 +37,7 @@ typedef enum command_state {
 
 typedef struct command_parser {
     int line_size;
+    int crlf_state;  //0 NONE, 1 /r READ, 2 /n READ
     int state_size;
     int args_size;
     int  invalid_size;
