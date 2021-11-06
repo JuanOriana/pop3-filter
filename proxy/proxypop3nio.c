@@ -19,6 +19,8 @@
 #include "../utils/include/stm.h"
 #include "./include/proxypop3nio.h"
 #include "../parsers/include/hello_parser.h"
+#include "../parsers/include/command_parser.h"
+
 
 #define max(n1, n2) ((n1) > (n2) ? (n1) : (n2))
 
@@ -69,6 +71,8 @@ typedef struct connection
     char client_addr_humanized[ADDR_STRING_BUFF_SIZE];
     char origin_addr_humanized[ADDR_STRING_BUFF_SIZE];
 
+    address_representation origin_address_representation;
+
     struct state_machine stm;
 
     buffer *read_buffer;
@@ -80,7 +84,8 @@ typedef struct connection
     struct hello_struct hello_origin;
     struct copy copy_origin;
 
-    address_representation origin_address_representation;
+    command_instance * current_command;
+    bool is_awaiting_response_from_origin = false;
 
     /** Resolución basica la dirección del origin server. */
     struct addrinfo *dns_resolution;
@@ -335,6 +340,9 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     stm_init(&new_connection->stm);
 
     new_connection->session.last_used = time(NULL);
+
+    new_connection->current_command = NULL;
+    new_connection->is_awaiting_response_from_origin = false;
 
     return new_connection;
 }
