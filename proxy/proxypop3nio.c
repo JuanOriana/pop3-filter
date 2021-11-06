@@ -800,7 +800,6 @@ static void filter_init(struct selector_key * key){
         close(filter->write_pipe[1]);
         close(filter->read_pipe[0]);
 
-        log(DEBUG," set not blocking to filter sockets on proxy");
         if( (selector_fd_set_nio(filter->write_pipe[0]) < 0) || (selector_fd_set_nio(filter->read_pipe[1]) < 0)){
             log(ERROR,"Failed to set not blocking to filter sockets on proxy");
             // TODO SI HAY QUE ABORTAR LA CONEXCION O QUE.
@@ -941,52 +940,6 @@ unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
     return ret_value;
 }
 
-
-unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
-    size_t max_size_to_read;
-    ssize_t readed;
-    buffer *buffer = copy->read_buffer;
-    unsigned ret_value = COPYING;
-
-    uint8_t *ptr = buffer_write_ptr(buffer, &max_size_to_read);
-
-    readed = recv(key->fd, ptr, max_size_to_read, 0);
-       
-    if (readed > 0)
-    {
-        buffer_write_adv(buffer, readed);
-    }
-    else if( readed ==0)
-    {
-        log(DEBUG,"Filter close connection");
-        //TODO: filter_close(key)
-        shut_down_copy(copy);
-    }
-
-    return ret_value;
-}
-
-void filter_compute_interest(struct selector_key *key){
-    fd_interest interest = OP_NOOP;
-    struct filter_data *filter = &ATTACHMENT(key)->filter;
-    struct copy *copy = &ATTACHMENT(key)->copy_filter;
-
-    if(filter->state == FILTER_WORKING){
-        if(buffer_can_read(copy->read_buffer)){
-            interest = OP_WRITE;
-            if(selector_set_interest(key->s,filter->read_pipe[1],OP_WRITE)!= SELECTOR_SUCCESS){
-                log(ERROR,"Failed to set write interest to filter");
-            }
-        }
-    }
-    if(buffer_can_write(copy->write_buffer)){
-        interest |= OP_READ;
-         if(selector_set_interest(key->s,filter->read_pipe[1],OP_READ)!= SELECTOR_SUCCESS){
-            log(ERROR,"Failed to set read interest to filter");
-        }
-    }
-}
-
 static void filter_close(struct selector_key *key){
     connection * connection = ATTACHMENT(key);
     struct filter_data * filter = &connection->filter;
@@ -1011,6 +964,75 @@ static void filter_close(struct selector_key *key){
     connection->filter.state = FILTER_CLOSE;
 }
 
+unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
+    size_t max_size_to_read;
+    ssize_t readed;
+    buffer *buffer = copy->read_buffer;
+    unsigned ret_value = COPYING;
+    log(DEBUG,"READING FROM FILTER");
+
+    uint8_t *ptr = buffer_write_ptr(buffer, &max_size_to_read);
+
+    readed = read(key->fd, ptr, max_size_to_read);
+       
+    if (readed > 0)
+    {
+        buffer_write_adv(buffer, readed);
+    }
+    else if( readed ==0)
+    {
+        log(DEBUG,"Filter close connection");
+        filter_close(key);
+        shut_down_copy(copy);
+    }
+
+    return ret_value;
+}
+
+void filter_compute_interest(struct selector_key *key){
+    fd_interest interest = OP_NOOP;
+    struct filter_data *filter = &ATTACHMENT(key)->filter;
+    struct copy *copy = &ATTACHMENT(key)->copy_filter;
+
+    if(filter->state == FILTER_WORKING){
+        if(buffer_can_read(copy->read_buffer)){
+            interest = OP_WRITE;
+            log(DEBUG,"SETTING INTEREST FILTER");
+            if(selector_set_interest(key->s,filter->read_pipe[1],OP_WRITE)!= SELECTOR_SUCCESS){
+                log(ERROR,"Failed to set write interest to filter");
+            }
+        }
+    }
+    if(buffer_can_write(copy->write_buffer)){
+        interest |= OP_READ;
+                    log(DEBUG,"SETTING INTEREST FILTER");
+
+         if(selector_set_interest(key->s,filter->write_pipe[0],OP_READ)!= SELECTOR_SUCCESS){
+            log(ERROR,"Failed to set read interest to filter");
+        }
+    }
+}
+
+static fd_interest compute_interest(struct selector_key *key, struct copy *copy,bool canWrite, bool canRead)
+{
+     fd_interest ret = OP_NOOP;
+    if ((copy->duplex & OP_READ) && canRead)
+    {
+        ret |= OP_READ;
+    }
+    if ((copy->duplex & OP_WRITE) && canWrite)
+    {
+        ret |= OP_WRITE;
+    }
+
+    if (selector_set_interest(key->s, *copy->fd, ret) != SELECTOR_SUCCESS)
+    {
+        log(ERROR,"Failed to set interests to fd in copy_compute_interests");
+        abort();// TODO: VER SI CORRESPONDE ABORTAR
+    }
+
+    return ret;
+}
 static fd_interest client_compute_interest(struct selector_key *key)
 {
     connection *connection = ATTACHMENT(key);
@@ -1020,48 +1042,18 @@ static fd_interest client_compute_interest(struct selector_key *key)
 
     bool writeFromFilter = buffer_can_read(connection->copy_filter.read_buffer) && (connection->filter.state == FILTER_WORKING ||connection->filter.state == FILTER_FINISHED_SENDING);
 
-    fd_interest ret = OP_NOOP;
-    if ((copy->duplex & OP_READ) && buffer_can_write(copy->read_buffer))
-    {
-        ret |= OP_READ;
-    }
-    if ((copy->duplex & OP_WRITE) && (writeFromFilter || writeFromOrigin))
-    {
-        ret |= OP_WRITE;
-    }
 
-    if (selector_set_interest(key->s, *copy->fd, ret) != SELECTOR_SUCCESS)
-    {
-        log(ERROR,"Failed to set interests to fd in copy_compute_interests");
-        abort();// TODO: VER SI CORRESPONDE ABORTAR
-    }
-
-    return ret;
+    return compute_interest(key,copy,(writeFromFilter || writeFromOrigin),buffer_can_write(copy->read_buffer));
 }
 
 static fd_interest origin_compute_interest(struct selector_key *key)
 {
     connection *connection = ATTACHMENT(key);
     struct copy *copy = &connection->copy_origin;
-
-    fd_interest ret = OP_NOOP;
-    if ((copy->duplex & OP_READ) && buffer_can_write(copy->read_buffer))
-    {
-        ret |= OP_READ;
-    }
-    if ((copy->duplex & OP_WRITE) && buffer_can_read(copy->write_buffer))
-    {
-        ret |= OP_WRITE;
-    }
-
-    if (selector_set_interest(key->s, *copy->fd, ret) != SELECTOR_SUCCESS)
-    {
-        log(ERROR,"Failed to set interests to fd in copy_compute_interests");
-        abort();// TODO: VER SI CORRESPONDE ABORTAR
-    }
-
-    return ret;
+   return compute_interest(key,copy,buffer_can_read(copy->write_buffer),buffer_can_write(copy->read_buffer));
+   
 }
+
 
 void copy_compute_interests(struct selector_key *key){
     connection *connection = ATTACHMENT(key);
@@ -1076,6 +1068,7 @@ void copy_compute_interests(struct selector_key *key){
             }
             if(buffer_can_read(connection->copy_filter.read_buffer)){
                 filter->state = FILTER_WORKING;
+                
                 filter_compute_interest(key);
             }
             break;
@@ -1117,6 +1110,7 @@ unsigned on_read_ready_copying(struct selector_key *key)
         break;
 
     case FILTER:
+        log(DEBUG,"FILTER 1");
         read_and_process_filter(key,copy);
         break;
 
@@ -1148,7 +1142,7 @@ unsigned on_write_ready_copying(struct selector_key *key)
 
     // }
     sended = send(key->fd, ptr, max_size_to_write, MSG_NOSIGNAL);
-            //write(ATTACHMENT(key)->filter.read_pipe[1],ptr,max_size_to_write);
+            write(ATTACHMENT(key)->filter.read_pipe[1],ptr,max_size_to_write);
     if (sended <= 0)
     {
         // apagar ese fd de escritura
