@@ -25,9 +25,8 @@ typedef enum command_t {
 typedef struct command_instance {
     command_t    type;
     bool         is_multi;
-    bool         indicator;
+    bool         indicator; // Data for response. True is positive and false is negative
     void *       data;
-    struct command_instance *    next;
 } command_instance;
 
 typedef enum command_state {
