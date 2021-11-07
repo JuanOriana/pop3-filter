@@ -388,7 +388,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     new_connection->current_command = NULL;
     new_connection->is_awaiting_response_from_origin = false;
     command_parser_init(&new_connection->command_parser);
-    command_parser_init(&new_connection->command_response_parser);
+    command_response_parser_init(&new_connection->command_response_parser);
 
     return new_connection;
 }
@@ -798,7 +798,6 @@ static void filter_init(struct selector_key * key){
         open(pop3_proxy_args.error_file,O_WRONLY | O_APPEND); // O_APPEND indica que escriba a partir del final del archivo
 
         //TODO: Setear variables de entorno
-         log(ERROR,"EXECLL command");
         if(execl("/bin/sh","sh","-c",pop3_proxy_args.filter,(char * )0) < 0){
             log(ERROR,"Executing command");
             close(filter->read_pipe[0]);
@@ -987,7 +986,7 @@ unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
     ssize_t readed;
     buffer *buffer = copy->read_buffer;
     unsigned ret_value = COPYING;
-    log(DEBUG,"READING FROM FILTER");
+    // log(DEBUG,"READING FROM FILTER");
 
     uint8_t *ptr = buffer_write_ptr(buffer, &max_size_to_read);
 
@@ -1014,14 +1013,14 @@ void filter_compute_interest(struct selector_key *key){
 
     if(filter->state == FILTER_WORKING){
         if(buffer_can_read(copy->write_buffer)){
-            log(DEBUG,"FILTER CAN READ BFF");
+            // log(DEBUG,"FILTER CAN READ BFF");
             if(selector_set_interest(key->s,filter->read_pipe[1],OP_WRITE)!= SELECTOR_SUCCESS){
                 log(ERROR,"Failed to set write interest to filter");
             }
         }
     }
     if(buffer_can_write(copy->read_buffer)){
-        log(DEBUG,"FILTER CAN write BFF");
+        // log(DEBUG,"FILTER CAN write BFF");
          if(selector_set_interest(key->s,filter->write_pipe[0],OP_READ)!= SELECTOR_SUCCESS){
             log(ERROR,"Failed to set read interest to filter");
         }
@@ -1057,10 +1056,10 @@ static fd_interest client_compute_interest(struct selector_key *key)
 
     bool writeFromFilter = buffer_can_read(connection->copy_filter.read_buffer) && (connection->filter.state == FILTER_WORKING ||connection->filter.state == FILTER_FINISHED_SENDING);
     if(writeFromOrigin){
-        log(ERROR,"CLIENT TO writeFromOrigin");
+        // log(ERROR,"CLIENT TO writeFromOrigin");
     }
     if(writeFromFilter){
-        log(ERROR,"CLIENT TO writeFromFilter");
+        // log(ERROR,"CLIENT TO writeFromFilter");
     }
 
     return compute_interest(key,copy,(writeFromFilter || writeFromOrigin),buffer_can_write(copy->read_buffer));
@@ -1131,7 +1130,6 @@ unsigned on_read_ready_copying(struct selector_key *key)
         break;
 
     case FILTER:
-        log(DEBUG,"FILTER 1");
         ret_value=read_and_process_filter(key,copy);
         break;
     }
@@ -1156,11 +1154,9 @@ static unsigned send_to_client(struct selector_key *key,struct copy *copy){
     struct filter_data filter = connection->filter;
 
     if((filter.state == FILTER_WORKING) || (filter.state == FILTER_FINISHED_SENDING) ){
-        log(DEBUG,"CLIENT READING FROM FILTER ");
         buffer = connection->copy_filter.read_buffer;
         ptr = buffer_read_ptr(buffer,&max_size_to_write);
     }else{
-        log(DEBUG,"CLIENT READING FROM ORIGIN");
         buffer = copy->write_buffer;
         ptr = buffer_read_ptr(buffer, &max_size_to_write);
     }
@@ -1177,21 +1173,25 @@ static unsigned send_to_client(struct selector_key *key,struct copy *copy){
 }
 
 static unsigned send_to_origin(struct selector_key *key,struct copy *copy){
+    connection *connection = ATTACHMENT(key);
     unsigned ret_value = COPYING;
     size_t max_size_to_write;
     ssize_t sended;
     buffer *buffer = copy->write_buffer;
     uint8_t *ptr = buffer_read_ptr(buffer, &max_size_to_write);
+    command_state command_state;
 
     // METER EL PARSER DE RESPONSE
-    
-    log(DEBUG,"SEND ORI");
+    connection->is_awaiting_response_from_origin = false;
+   command_state = command_parser_consume(&connection->command_parser,buffer,false,&connection->is_awaiting_response_from_origin);
+   
+    log(DEBUG,"Command state %d", connection->command_parser.current_command.type);
     sended = send(key->fd, ptr, max_size_to_write, MSG_NOSIGNAL);
 
     if(sended<0){
         shut_down_copy(copy,false);
     }else{
-        buffer_read_adv(buffer,sended);
+        // buffer_read_adv(buffer,sended);
         // TODO: METER manejo de que si el comando es de interes del para el filter mandarselo creo
     }
 
@@ -1211,7 +1211,6 @@ static unsigned write_to_filter(struct selector_key *key,struct copy *copy){
         ATTACHMENT(key)->filter.state = FILTER_ENDING;
     }else if(sended == 0){
         // Filter sendded EOF
-        log(DEBUG,"WRITE TO FILTER = 0");
         filter_close(key);
 
         /// TODO ANALIZAR que quedo en el buffer
@@ -1236,7 +1235,6 @@ unsigned on_write_ready_copying(struct selector_key *key)
         break;
 
     case FILTER:
-        log(DEBUG,"FILTER 1");
         if(filter_state == FILTER_WORKING || filter_state == FILTER_FINISHED_SENDING)
        ret_value= write_to_filter(key,copy);
         break;
