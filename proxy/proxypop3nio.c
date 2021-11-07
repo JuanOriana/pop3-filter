@@ -953,7 +953,7 @@ static void analize_response(connection * connection, bool * new_response) {
     char * username;
     size_t username_len;
     
-    if(connection->current_command != NULL) {
+    if(connection->current_command->type != -2) {
         command_instance * current = connection->current_command;
         *new_response = true;
         if(!connection->session.is_logged) {
@@ -971,8 +971,7 @@ static void analize_response(connection * connection, bool * new_response) {
                 connection->session.is_logged = true;
             }
         }
-        command_delete(current);
-        connection->current_command = NULL;
+        connection->current_command->type = -2;
     }
 }
 
@@ -1298,7 +1297,6 @@ unsigned on_write_ready_copying(struct selector_key *key)
     case ORIGIN:
         ret_value=send_to_origin(key,copy);
         break;
-
    
     }
     copy_compute_interests(key);
