@@ -63,6 +63,8 @@ struct hello_struct {
 };
 
 struct session{
+    bool is_loged;
+    char *name;
     time_t last_used;
 };
 
@@ -178,6 +180,7 @@ static const struct fd_handler proxy_handler = {
     .handle_time_out = proxy_time_out,
 };
 
+static void analize_response(connection * connection, bool * new_response);
 
 unsigned on_read_ready_copying(struct selector_key *key);
 unsigned on_write_ready_copying(struct selector_key *key);
@@ -385,7 +388,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
 
     new_connection->session.last_used = time(NULL);
 
-    new_connection->current_command = NULL;
+    new_connection->current_command = malloc(sizeof(command_instance)); // TODO: VER SI VA ACA 
     new_connection->is_awaiting_response_from_origin = false;
     command_parser_init(&new_connection->command_parser);
     command_response_parser_init(&new_connection->command_response_parser);
@@ -924,16 +927,64 @@ unsigned read_and_process_client(struct selector_key *key,struct copy *copy){
     return ret_value;
 }
 
+static unsigned analize_process_response(connection * connection, buffer * buffer, bool interest_retr, bool to_new_command) {
+    unsigned ret = COPYING;
+    bool errored = false, new_response = false;
+    size_t size;
+    uint8_t * ptr = buffer_read_ptr(buffer,&size);
+    const command_response_state state = command_response_parser_consume_until(&connection->command_response_parser, 
+    ptr,size, connection->current_command, interest_retr, to_new_command, &errored); 
+    if(errored) {
+        connection->error_data.err_msg = "-ERR Unexpected event\r\n";
+        ret = ERROR_W_MESSAGE_ST;
+    }
+    else if(interest_retr && state == RESPONSE_INTEREST)
+        connection->filter.state = FILTER_START;
+
+    analize_response(connection, &new_response);
+    if(new_response)
+        connection->is_awaiting_response_from_origin = false;
+
+    return ret;        
+}
+
+static void analize_response(connection * connection, bool * new_response) {
+    char * username;
+    size_t username_len;
+    
+    if(connection->current_command != NULL) {
+        command_instance * current = connection->current_command;
+        *new_response = true;
+        if(!connection->session.is_loged) {
+            if(current->type == CMD_USER && current->indicator) {
+                username = get_user(*current);
+                username_len = strlen(username) + 1;  //checkear size mayor 40
+                memcpy(connection->session.name, username, username_len);
+            } else if(current->type == CMD_PASS && current->indicator) {
+                log(DEBUG,"Logged user: %s", connection->session.name);
+                connection->session.is_loged = true;
+            } else if(current->type == CMD_APOP && current->indicator) {
+                username = get_user(*current);
+                username_len = strlen(username) + 1;  //checkear size mayor 40
+                memcpy(connection->session.name, username, username_len);
+                connection->session.is_loged = true;
+            }
+        }
+        command_delete(current);
+        connection->current_command = NULL;
+    }
+}
+
 unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
     connection * connection = ATTACHMENT(key);
     struct filter_data filter = connection->filter;
 
     size_t max_size_to_read;
     ssize_t readed;
-    buffer *buffer ;
+    buffer *buffer = copy->read_buffer; ;
     unsigned ret_value = COPYING;
 
-    buffer = copy->read_buffer;
+     
     uint8_t *ptr = buffer_write_ptr(buffer, &max_size_to_read);
 
     readed = recv(key->fd, ptr, max_size_to_read, 0);
@@ -941,12 +992,14 @@ unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
     if (readed > 0)
     {
          /// TODO: METER MANEJO DEL PARSER RESPONSE ACA
+         
         buffer_write_adv(buffer, readed);
-        // if(connection->filter.state == FILTER_CLOSE){
+        if(connection->filter.state == FILTER_CLOSE){
+            analize_process_response(connection,buffer,false,true);
             //TODO: con el parser computamos que tipo de response es, si es de interes para el filter lo ponemos en starting (solo el retr es de interes)
             //Por ahora activamos siempre el filter
-            connection->filter.state = FILTER_START;
-        // }
+            // connection->filter.state = FILTER_START;
+        }
     }
     else
     {
@@ -1027,14 +1080,14 @@ void filter_compute_interest(struct selector_key *key){
     }
 }
 
-static fd_interest compute_interest(struct selector_key *key, struct copy *copy,bool canWrite, bool canRead)
+static fd_interest compute_interest(struct selector_key *key, struct copy *copy,bool can_write, bool can_read)
 {
      fd_interest ret = OP_NOOP;
-    if ((copy->duplex & OP_READ) && canRead)
+    if ((copy->duplex & OP_READ) && can_read)
     {
         ret |= OP_READ;
     }
-    if ((copy->duplex & OP_WRITE) && canWrite)
+    if ((copy->duplex & OP_WRITE) && can_write)
     {
         ret |= OP_WRITE;
     }
@@ -1069,8 +1122,8 @@ static fd_interest origin_compute_interest(struct selector_key *key)
 {
     connection *connection = ATTACHMENT(key);
     struct copy *copy = &connection->copy_origin;
-   return compute_interest(key,copy,buffer_can_read(copy->write_buffer),buffer_can_write(copy->read_buffer));
-   
+    bool origin_want_write = !connection->is_awaiting_response_from_origin;
+   return compute_interest(key,copy,(origin_want_write && buffer_can_read(copy->write_buffer)), buffer_can_write(copy->read_buffer));  
 }
 
 
@@ -1113,7 +1166,6 @@ void copy_compute_interests(struct selector_key *key){
 }
 
 
-// Habria que hacer el manejo de dessetear el FD
 unsigned on_read_ready_copying(struct selector_key *key)
 {
     struct copy *copy = copy_ptr(key);
@@ -1180,13 +1232,16 @@ static unsigned send_to_origin(struct selector_key *key,struct copy *copy){
     buffer *buffer = copy->write_buffer;
     uint8_t *ptr = buffer_read_ptr(buffer, &max_size_to_write);
     command_state command_state;
+    size_t to_send =0;
 
-    // METER EL PARSER DE RESPONSE
-    connection->is_awaiting_response_from_origin = false;
-   command_state = command_parser_consume(&connection->command_parser,buffer,false,&connection->is_awaiting_response_from_origin);
-   
+    command_state = command_parser_consume(&connection->command_parser,buffer,false,&connection->is_awaiting_response_from_origin,&to_send);
+    
+    if(connection->is_awaiting_response_from_origin){
+        memcpy(&connection->current_command,&connection->command_parser.current_command,sizeof(command_instance));
+    }
+
     log(DEBUG,"Command state %d", connection->command_parser.current_command.type);
-    sended = send(key->fd, ptr, max_size_to_write, MSG_NOSIGNAL);
+    sended = send(key->fd, ptr, to_send, MSG_NOSIGNAL);
 
     if(sended<0){
         shut_down_copy(copy,false);

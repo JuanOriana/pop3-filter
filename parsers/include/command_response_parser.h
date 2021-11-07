@@ -40,10 +40,10 @@ command_response_state command_response_parser_feed(command_response_parser * pa
  * @param errored parametro de salida. Si es diferente de NULL se deja dicho
  *   si el parsing se debió a una condición de error
  */
-command_response_state command_response_parser_consume(command_response_parser * parser, buffer* buffer, command_instance* command_to_respond, bool * errored);
+command_response_state command_response_parser_consume(command_response_parser * parser, uint8_t* char_buffer, size_t n_to_read, command_instance* command_to_respond, bool * errored);
 
 
-command_response_state command_response_parser_consume_until(command_response_parser * parser, buffer* buffer, command_instance* command_to_respond,
+command_response_state command_response_parser_consume_until(command_response_parser * parser, uint8_t* char_buffer, size_t n_to_read, command_instance* command_to_respond,
                                          bool interested, bool to_new_command, bool * errored);
 
 #endif
