@@ -859,10 +859,10 @@ static void on_arrival_copying(const unsigned state, struct selector_key *key)
     copy_origin->other = copy_client;
     copy_origin->target =ORIGIN;
 
-    //copy_filter->read_buffer = connection->write_buffer;
-    //copy_filter->write_buffer = connection->read_buffer;
-     copy_filter->read_buffer = connection->filter_buffer;
-     copy_filter->write_buffer = connection->write_buffer;
+    copy_filter->read_buffer = connection->write_buffer;
+    copy_filter->write_buffer = connection->read_buffer;
+    //  copy_filter->read_buffer = connection->filter_buffer;
+    //  copy_filter->write_buffer = connection->write_buffer;
     copy_filter->duplex = OP_READ | OP_WRITE; // TODO: Asignar dependiendo de las reglas de pop 3
     copy_filter->other = NULL;
     copy_filter->target = FILTER;
@@ -920,15 +920,7 @@ unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
     buffer *buffer ;
     unsigned ret_value = COPYING;
 
-    // if((filter.state == FILTER_WORKING) || (filter.state == FILTER_FINISHED_SENDING)){
-    //     Copiamos lo que leemos del origin en el buffer del filter
-     log(DEBUG,"ORIGIN WRITING TO FILTER BUFF");
-        struct copy *cop2  = &connection->copy_filter;
-        buffer = cop2->read_buffer;
-    // }else{
-    //      log(DEBUG,"ORIGIN WRITING TO WRITE BUFF");
-    //     buffer = copy->read_buffer;
-    // }
+    buffer = copy->read_buffer;
     uint8_t *ptr = buffer_write_ptr(buffer, &max_size_to_read);
 
     readed = recv(key->fd, ptr, max_size_to_read, 0);
