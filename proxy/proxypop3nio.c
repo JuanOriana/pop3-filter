@@ -20,6 +20,7 @@
 #include "./include/proxypop3nio.h"
 #include "../parsers/include/hello_parser.h"
 #include "../parsers/include/command_parser.h"
+#include "../parsers/include/command_response_parser.h"
 
 
 #define max(n1, n2) ((n1) > (n2) ? (n1) : (n2))
@@ -84,8 +85,11 @@ typedef struct connection
     struct hello_struct hello_origin;
     struct copy copy_origin;
 
+    command_parser command_parser;
+    command_response_parser command_response_parser;
+
     command_instance * current_command;
-    bool is_awaiting_response_from_origin = false;
+    bool is_awaiting_response_from_origin;
 
     /** Resolución basica la dirección del origin server. */
     struct addrinfo *dns_resolution;
@@ -343,6 +347,8 @@ struct connection *new_connection(int client_fd, address_representation origin_a
 
     new_connection->current_command = NULL;
     new_connection->is_awaiting_response_from_origin = false;
+    command_parser_init(&new_connection->command_parser);
+    command_response_parser_consume(&new_connection->command_response_parser);
 
     return new_connection;
 }
