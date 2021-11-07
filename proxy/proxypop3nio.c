@@ -17,6 +17,7 @@
 #include "../utils/include/buffer.h"
 #include "../utils/include/selector.h"
 #include <sys/signal.h>
+#include "signal.h"
 #include "../utils/include/stm.h"
 #include "./include/proxypop3nio.h"
 #include "../parsers/include/hello_parser.h"
@@ -63,8 +64,8 @@ struct hello_struct {
 };
 
 struct session{
-    bool is_loged;
-    char *name;
+    bool is_logged;
+    char name[256];
     time_t last_used;
 };
 
@@ -955,19 +956,19 @@ static void analize_response(connection * connection, bool * new_response) {
     if(connection->current_command != NULL) {
         command_instance * current = connection->current_command;
         *new_response = true;
-        if(!connection->session.is_loged) {
+        if(!connection->session.is_logged) {
             if(current->type == CMD_USER && current->indicator) {
                 username = get_user(*current);
                 username_len = strlen(username) + 1;  //checkear size mayor 40
                 memcpy(connection->session.name, username, username_len);
             } else if(current->type == CMD_PASS && current->indicator) {
                 log(DEBUG,"Logged user: %s", connection->session.name);
-                connection->session.is_loged = true;
+                connection->session.is_logged = true;
             } else if(current->type == CMD_APOP && current->indicator) {
                 username = get_user(*current);
                 username_len = strlen(username) + 1;  //checkear size mayor 40
                 memcpy(connection->session.name, username, username_len);
-                connection->session.is_loged = true;
+                connection->session.is_logged = true;
             }
         }
         command_delete(current);
@@ -1237,7 +1238,7 @@ static unsigned send_to_origin(struct selector_key *key,struct copy *copy){
     command_state = command_parser_consume(&connection->command_parser,buffer,false,&connection->is_awaiting_response_from_origin,&to_send);
     
     if(connection->is_awaiting_response_from_origin){
-        memcpy(&connection->current_command,&connection->command_parser.current_command,sizeof(command_instance));
+        memcpy(connection->current_command,&connection->command_parser.current_command,sizeof(command_instance));
     }
 
     log(DEBUG,"Command state %d", connection->command_parser.current_command.type);
