@@ -348,7 +348,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     new_connection->current_command = NULL;
     new_connection->is_awaiting_response_from_origin = false;
     command_parser_init(&new_connection->command_parser);
-    command_response_parser_consume(&new_connection->command_response_parser);
+    command_parser_init(&new_connection->command_response_parser);
 
     return new_connection;
 }
