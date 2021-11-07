@@ -152,7 +152,7 @@ command_state command_parser_feed(command_parser * parser, const char c, bool * 
         case COMMAND_ERROR:
             if(c == '\r' && parser->crlf_state == 0) {
                 parser->crlf_state = 1;
-            } else if(c == '\n' && parser->crlf_state == 1 ){
+            } else if(c == '\n'){
                 handle_command_parsed(current_command, parser, finished, true);
             }else{
                 parser->crlf_state = 0;
