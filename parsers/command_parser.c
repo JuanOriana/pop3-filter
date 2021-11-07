@@ -170,16 +170,18 @@ command_state command_parser_feed(command_parser * parser, const char c, command
     return parser->state;
 }
 
-command_state command_parser_consume(command_parser * parser, buffer* buffer, command_instance * commands, bool pipelining, bool * finished) {
+command_state command_parser_consume(command_parser * parser, buffer* buffer, command_instance * commands, bool pipelining, bool * finished, z) {
     command_state state = parser->state;
-
+    n = 0;
     while(buffer_can_read(buffer)) {
         const uint8_t c = buffer_read(buffer);
+        n++
         state = command_parser_feed(parser, c, commands, finished);
         if(!pipelining && *finished) {
             break;
         }
     }
+    *n_read = n;
     return state;
 }
 
