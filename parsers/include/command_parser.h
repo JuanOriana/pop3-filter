@@ -6,6 +6,8 @@
 
 #include "../../utils/include/buffer.h"
 
+#define MAX_MSG_SIZE 512
+#define MAX_ARG_SIZE 40
 #define SIZE_OF_CMD_TYPES  8
 
 typedef enum command_t {
@@ -23,9 +25,8 @@ typedef enum command_t {
 typedef struct command_instance {
     command_t    type;
     bool         is_multi;
-    bool         indicator;
+    bool         indicator; // Data for response. True is positive and false is negative
     void *       data;
-    struct command_instance *    next;
 } command_instance;
 
 typedef enum command_state {
@@ -37,7 +38,7 @@ typedef enum command_state {
 
 typedef struct command_parser {
     int line_size;
-    int crlf_state;  //0 NONE, 1 /r READ, 2 /n READ
+    int crlf_state;  //0 NONE, 1 \r READ, 2 \n READ
     int state_size;
     int args_size;
     int    invalid_size;
@@ -50,7 +51,7 @@ typedef struct command_parser {
 void command_parser_init(command_parser * parser);
 
 /** entrega un byte al parser. retorna true si se llego al final  */
-command_state command_parser_feed(command_parser * parser, const char c, command_instance * commands, bool * finished);
+command_state command_parser_feed(command_parser * parser, const char c, bool * finished);
 
 /**
  * por cada elemento del buffer llama a `commandParserFeed' hasta que
@@ -59,7 +60,7 @@ command_state command_parser_feed(command_parser * parser, const char c, command
  * @param errored parametro de salida. si es diferente de NULL se deja dicho
  *   si el parsing se debió a una condición de error
  */
-command_state command_parser_consume(command_parser * parser, buffer* buffer, command_instance * commands, bool pipelining, bool * finished,int * n_read);
+command_state command_parser_consume(command_parser * parser, buffer* buffer, bool pipelining, bool * finished);
 
 char * ger_user(const command_instance command);
 //Returns next command in list (if any)
