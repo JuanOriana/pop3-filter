@@ -60,7 +60,7 @@ command_state command_parser_feed(command_parser * parser, const char c, bool * 
  * @param errored parametro de salida. si es diferente de NULL se deja dicho
  *   si el parsing se debió a una condición de error
  */
-command_state command_parser_consume(command_parser * parser, buffer* buffer, bool pipelining, bool * finished);
+command_state command_parser_consume(command_parser * parser, buffer* buffer, bool pipelining, bool * finished,int * n_consumed);
 
 char * ger_user(const command_instance command);
 void command_delete(command_instance * command);
