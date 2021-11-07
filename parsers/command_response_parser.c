@@ -91,7 +91,7 @@ command_response_state command_response_parser_feed(command_response_parser * pa
             break;
 
         case RESPONSE_BODY:
-            if (c = crlf_multi_msg[0]){
+            if (c == crlf_multi_msg[0]){
                 parser->crlf_state = 1;
             }
             else if(c == crlf_multi_msg[1]) {
@@ -126,7 +126,7 @@ command_response_state command_response_parser_feed(command_response_parser * pa
 
         case RESPONSE_INTEREST:
             parser->state = RESPONSE_BODY;
-            if (c = crlf_multi_msg[0]){
+            if (c == crlf_multi_msg[0]){
                 parser->crlf_state = 1;
             }
             else if(c == crlf_multi_msg[1]) {

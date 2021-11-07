@@ -185,14 +185,12 @@ char * get_user(const command_instance command) {
     return NULL;
 }
 
-command_instance* command_delete(command_instance * command) {
+void command_delete(command_instance * command) {
     if(command == NULL)
-        return NULL;
-    command_instance * next = command->next;
+        return;
     if(command->data != NULL)
         free(command->data);
     free(command);
-    return next;
 }
 
 static void command_init(command_instance * command) {
