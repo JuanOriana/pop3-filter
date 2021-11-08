@@ -49,6 +49,8 @@ response_sap create_new_sap_response(response_code response_code, size_t data_le
 
 size_t get_sap_response_size(response_sap *response);
 
+void prepare_sap_response(buffer *buffer, response_sap *response);
+
 void free_sap_request(request_sap *request);
 void free_sap_response(response_sap *response);
 

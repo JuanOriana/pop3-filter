@@ -17,7 +17,7 @@ request_sap get_sap_request(buffer *buffer)
     void *buffer_read_pointer = buffer_read_ptr(buffer, &size);
 
     new_request_datagram->credential = ntohl(*((uint32_t *)buffer_read_pointer));
-    buffer_read_adv(buffer, sizeof(new_request_datagram->credential)); // avanzo el punter de lectura al siguiente elemnto de la estructura
+    buffer_read_adv(buffer, sizeof(new_request_datagram->credential)); // advance buffer pointer to next field
 
     buffer_read_pointer = buffer_read_ptr(buffer, &size);
     new_request_datagram->s_version = ntohl(*((uint32_t *)buffer_read_pointer));
@@ -68,6 +68,40 @@ size_t get_sap_response_size(response_sap *response)
         // ERROR
     }
     return (int)(response->data_length) + RESPONSE_HEADER_SIZE;
+}
+
+void prepare_sap_response(buffer *buffer, response_sap *response)
+{
+    if (response == NULL || buffer == NULL)
+    {
+        // ERROR
+    }
+
+    size_t size;
+    void *buffer_write_pointer = buffer_write_ptr(buffer, &size);
+    if (size < RESPONSE_HEADER_SIZE)
+    {
+        // ERROR: no enough space in write buffer
+    }
+
+    memset(buffer_write_pointer, 0, get_sap_response_size(response)); // clean buffer
+
+    int field_bytes;
+    char *buffer_current_pointer = buffer_write_pointer;
+
+    field_bytes = htonl(response->response_code);
+    memcpy(buffer_current_pointer, &field_bytes, sizeof(uint32_t));
+
+    buffer_current_pointer += sizeof(uint32_t); // sizeof response_code field
+
+    field_bytes = htonl(response->data_length);
+    memcpy(buffer_current_pointer, &field_bytes, sizeof(uint32_t));
+
+    buffer_current_pointer += sizeof(uint32_t); // sizeof data_length field
+
+    memcpy(buffer_current_pointer, response->data, response->data_length);
+
+    buffer_write_adv(buffer, get_sap_response_size(response)); // buffer write pointer update
 }
 
 void free_sap_request(request_sap *request)
