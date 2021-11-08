@@ -61,7 +61,16 @@ response_sap create_new_sap_response(response_code response_code, size_t data_le
     return new_response_datagram;
 }
 
-void free_sap_request(request_sap request)
+size_t get_sap_response_size(response_sap *response)
+{
+    if (response == NULL)
+    {
+        // ERROR
+    }
+    return (int)(response->data_length) + RESPONSE_HEADER_SIZE;
+}
+
+void free_sap_request(request_sap *request)
 {
     if (request == NULL)
     {
@@ -70,7 +79,7 @@ void free_sap_request(request_sap request)
     free(request);
 }
 
-void free_sap_response(response_sap response)
+void free_sap_response(response_sap *response)
 {
     if (response == NULL)
     {

@@ -7,6 +7,8 @@
 #include <unistd.h>
 #include <stdint.h>
 
+#define RESPONSE_HEADER_SIZE (4 * sizeof(uint32_t))
+
 typedef enum operation_code
 {
     LOGIN = 1,
@@ -45,7 +47,9 @@ typedef struct response_sap
 request_sap get_sap_request(buffer *buffer);
 response_sap create_new_sap_response(response_code response_code, size_t data_length, void *data);
 
-void free_sap_request(request_sap request);
-void free_sap_response(response_sap response);
+size_t get_sap_response_size(response_sap *response);
+
+void free_sap_request(request_sap *request);
+void free_sap_response(response_sap *response);
 
 #endif
