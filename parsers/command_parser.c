@@ -45,7 +45,7 @@ static const command_data all_command_data[] = {
 
 static void command_init(command_instance * command);
 
-static command_instance * handle_command_parsed(command_instance * current_command, command_parser * parser, bool * finished, bool not_match);
+static void handle_command_parsed(command_instance * current_command, command_parser * parser, bool * finished, bool not_match);
 
 
 void command_parser_init(command_parser * parser) {
@@ -152,7 +152,7 @@ command_state command_parser_feed(command_parser * parser, const char c, bool * 
         case COMMAND_ERROR:
             if(c == '\r' && parser->crlf_state == 0) {
                 parser->crlf_state = 1;
-            } else if(c == '\n' && parser->crlf_state == 1 ){
+            } else if(c == '\n'){
                 handle_command_parsed(current_command, parser, finished, true);
             }else{
                 parser->crlf_state = 0;
@@ -166,16 +166,18 @@ command_state command_parser_feed(command_parser * parser, const char c, bool * 
     return parser->state;
 }
 
-command_state command_parser_consume(command_parser * parser, buffer* buffer, bool pipelining, bool * finished) {
+command_state command_parser_consume(command_parser * parser, buffer* buffer, bool pipelining, bool * finished, size_t * n_consumed) {
     command_state state = parser->state;
-
+    size_t n = 0;
     while(buffer_can_read(buffer)) {
+        n++;
         const uint8_t c = buffer_read(buffer);
         state = command_parser_feed(parser, c, finished);
         if(!pipelining && *finished) {
             break;
         }
     }
+    *n_consumed = n;
     return state;
 }
 
@@ -199,8 +201,7 @@ static void command_init(command_instance * command) {
     command->data = NULL;
 }
 
-static command_instance * handle_command_parsed(command_instance * current_command, command_parser * parser, bool * finished, bool not_match) {
-    command_instance * new_command = malloc(sizeof(command_instance));
+static void handle_command_parsed(command_instance * current_command, command_parser * parser, bool * finished, bool not_match) {
 
     if(not_match) {
         current_command->type = CMD_NOT_RECOGNIZED;
@@ -217,5 +218,4 @@ static command_instance * handle_command_parsed(command_instance * current_comma
     parser->state_size =  0;
     *finished = true;
 
-    return new_command;
 }

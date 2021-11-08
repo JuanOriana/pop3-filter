@@ -156,12 +156,12 @@ command_response_state command_response_parser_feed(command_response_parser * pa
     return parser->state;
 }
 
-command_response_state command_response_parser_consume(command_response_parser * parser, buffer* buffer, command_instance * command_to_respond, bool * errored) {
+command_response_state command_response_parser_consume(command_response_parser * parser, uint8_t* char_buffer, size_t n_to_read, command_instance * command_to_respond, bool * errored) {
     command_response_state state = parser->state;
     *errored = false;
 
-    while(buffer_can_read(buffer)) {
-        const uint8_t c = buffer_read(buffer);
+    for(int i = 0; i < n_to_read; i++) {
+        const uint8_t c = char_buffer[i];
         state = command_response_parser_feed(parser, c, command_to_respond);
         if(state == RESPONSE_ERROR) {
             *errored = true;
@@ -171,20 +171,20 @@ command_response_state command_response_parser_consume(command_response_parser *
     return state;
 }
 
-command_response_state command_response_parser_consume_until(command_response_parser * parser, buffer* buffer,
-                                                             command_instance * command_to_respond, bool interested, bool to_new_commanc, bool * errored) {
+command_response_state command_response_parser_consume_until(command_response_parser * parser, uint8_t* char_buffer, size_t n_to_read,
+                                                             command_instance * command_to_respond, bool interested, bool to_new_command, bool * errored) {
     command_response_state state = parser->state;
     *errored = false;
-    if(to_new_commanc && state == RESPONSE_INIT)
-        return state;
-
-    while(buffer_can_read(buffer)) {
-        const uint8_t c = buffer_read(buffer);
+    // if(to_new_commanc && state == RESPONSE_INIT)
+    //     return state;
+    
+    for(int i = 0; i < n_to_read; i++) {
+        const uint8_t c = char_buffer[i];
         state = command_response_parser_feed(parser, c, command_to_respond);
         if(state == RESPONSE_ERROR) {
             *errored = true;
             break;
-        } else if((state == RESPONSE_INTEREST && interested) || (state == RESPONSE_INIT && to_new_commanc))
+        } else if((state == RESPONSE_INTEREST && interested) || (state == RESPONSE_INIT && to_new_command))
             break;
     }
     return state;

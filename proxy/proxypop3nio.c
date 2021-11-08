@@ -11,19 +11,19 @@
 #include <netinet/in.h>
 #include <sys/time.h>
 #include <limits.h>
+#include <fcntl.h>
 #include "../include/args.h"
 #include "../utils/include/logger.h"
 #include "../utils/include/buffer.h"
 #include "../utils/include/selector.h"
 #include <sys/signal.h>
+#include "signal.h"
 #include "../utils/include/stm.h"
 #include "./include/proxypop3nio.h"
 #include "../parsers/include/hello_parser.h"
 #include "../parsers/include/command_parser.h"
 #include "../parsers/include/command_response_parser.h"
 
-
-#define max(n1, n2) ((n1) > (n2) ? (n1) : (n2))
 
 #define MAX_SOCKETS 30
 #define BUFFSIZE 2048
@@ -35,6 +35,13 @@
 #define MSG_NOSIGNAL 0
 #endif
 
+
+typedef enum {
+    CLIENT,
+    ORIGIN,
+    FILTER
+}targets;
+
 struct copy
 {
     // El file descriptor del otro.
@@ -43,6 +50,8 @@ struct copy
     buffer *read_buffer, *write_buffer;
 
     fd_interest duplex;
+
+    targets target;
 
     struct copy *other;
 };
@@ -53,14 +62,32 @@ struct hello_struct {
 };
 
 struct session{
+    bool is_logged;
+    char name[256];
     time_t last_used;
 };
 
 typedef struct error_data {
     char * err_msg;
     size_t msg_len;
-    size_t msg_sent_size;
+    size_t msg_sent_size; 
 } error_data;
+
+typedef enum
+{
+    FILTER_START,
+    FILTER_WORKING,
+    FILTER_FINISHED_SENDING,
+    FILTER_ENDING,
+    FILTER_CLOSE
+}filter_state;
+
+struct filter_data{
+    int     write_pipe[2];
+    int     read_pipe[2];
+    pid_t   slave_proc_pid;
+    filter_state state;
+};
 
 typedef struct connection
 {
@@ -68,6 +95,7 @@ typedef struct connection
     int origin_fd;
 
     struct session session;
+    struct filter_data filter;
 
     char client_addr_humanized[ADDR_STRING_BUFF_SIZE];
     char origin_addr_humanized[ADDR_STRING_BUFF_SIZE];
@@ -78,12 +106,15 @@ typedef struct connection
 
     buffer *read_buffer;
     buffer *write_buffer;
+    buffer *filter_buffer;
 
     struct hello_struct hello_client;
     struct copy copy_client;
 
     struct hello_struct hello_origin;
     struct copy copy_origin;
+
+    struct copy copy_filter;
 
     command_parser command_parser;
     command_response_parser command_response_parser;
@@ -118,9 +149,11 @@ typedef enum
     ERROR_W_MESSAGE_ST
 } proxy_state;
 
+
+
 typedef struct state_definition state_definition;
 
-/** obtiene el struct (socks5 *) desde la llave de selección  */
+/** obtiene el struct (connection *) desde la llave de selección  */
 #define ATTACHMENT(key) ((struct connection *)(key)->data)
 
 /* declaración forward de los handlers de selección de una conexión
@@ -146,6 +179,7 @@ static const struct fd_handler proxy_handler = {
     .handle_time_out = proxy_time_out,
 };
 
+static void analize_response(connection * connection, bool * new_response);
 
 unsigned on_read_ready_copying(struct selector_key *key);
 unsigned on_write_ready_copying(struct selector_key *key);
@@ -301,8 +335,8 @@ struct connection *new_connection(int client_fd, address_representation origin_a
 {
     connection *new_connection;
 
-    buffer *read_buf, *write_buf;
-    uint8_t *direct_buff, *direct_buff_origin;
+    buffer *read_buf, *write_buf,*filter_buf;
+    uint8_t *direct_buff, *direct_buff_origin,*direct_buff_filter;
 
     // Verifico si es el primero
     if (connection_pool == NULL)
@@ -313,11 +347,14 @@ struct connection *new_connection(int client_fd, address_representation origin_a
             return NULL;
         }
         direct_buff = malloc(BUFFSIZE);
+        direct_buff_filter = malloc(BUFFSIZE);
         direct_buff_origin = malloc(BUFFSIZE);
         read_buf = malloc(sizeof(buffer));
         buffer_init(read_buf, BUFFSIZE, direct_buff); // Errores?
         write_buf = malloc(sizeof(buffer));
         buffer_init(write_buf, BUFFSIZE, direct_buff_origin); // Errores?
+        filter_buf = malloc(sizeof(buffer));
+        buffer_init(filter_buf, BUFFSIZE, direct_buff_filter); // Errores?
     }
     else
     {
@@ -325,14 +362,17 @@ struct connection *new_connection(int client_fd, address_representation origin_a
         connection_pool = connection_pool->next;
         read_buf = new_connection->read_buffer;
         write_buf = new_connection->write_buffer;
+        filter_buf = new_connection->filter_buffer;
         buffer_reset(read_buf);
         buffer_reset(write_buf);
+        buffer_reset(filter_buf);
     }
 
     new_connection->client_fd = client_fd;
     new_connection->origin_fd = -1;
     new_connection->read_buffer = read_buf;
     new_connection->write_buffer = write_buf;
+    new_connection->filter_buffer = filter_buf;
     new_connection->origin_address_representation = origin_address_representation;
     new_connection->next = NULL;
     new_connection->references = 1;
@@ -343,12 +383,14 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     new_connection->stm.states = client_states;
     stm_init(&new_connection->stm);
 
+    new_connection->filter.slave_proc_pid = -1;
+
     new_connection->session.last_used = time(NULL);
 
-    new_connection->current_command = NULL;
+    new_connection->current_command = malloc(sizeof(command_instance)); // TODO: VER SI VA ACA 
     new_connection->is_awaiting_response_from_origin = false;
     command_parser_init(&new_connection->command_parser);
-    command_parser_init(&new_connection->command_response_parser);
+    command_response_parser_init(&new_connection->command_response_parser);
 
     return new_connection;
 }
@@ -432,8 +474,7 @@ static unsigned on_connection_ready(struct selector_key *key)
         struct sockaddr_storage *origin = &connection->origin_address_representation.addr.address_storage;
         sockaddr_to_human(connection->origin_addr_humanized, ADDR_STRING_BUFF_SIZE, origin);
         log(INFO, "Connection successful. Client Address: %s; Origin Address: %s.", connection->client_addr_humanized, connection->origin_addr_humanized);
-        ret = HELLO; // estaba copying
-        // deberia ret = HELLO;
+        ret = HELLO; 
     }
     return ret;
 }
@@ -571,10 +612,12 @@ static unsigned dns_resolve_done(struct selector_key *key)
  */
 static void connection_destroy(connection *connection)
 {
-    // CLOSE SOCKETS?
+    // CLOSE SOCKETS? 
+    // TODO: Ver si metemos el destroy filter aca
     log(DEBUG,"Closing connection");
     free(connection->read_buffer->data);
     free(connection->read_buffer);
+
     free(connection->write_buffer->data);
     free(connection->write_buffer);
     free(connection);
@@ -604,7 +647,6 @@ static void connection_destroy_referenced(connection *connection)
     }
     else
     {
-        // connection_destroy(connection); // TODO: Ver por que esto no estaba aca
         connection->references -= 1;
     }
 }
@@ -713,18 +755,96 @@ unsigned on_write_ready_hello(struct selector_key *key){
     return ERROR_ST;
 }
 
+/////////////////// FUNCIONES DEL FILTER //////////////////////////////////////////////////
+
+
+static void filter_init(struct selector_key * key){
+    log(DEBUG,"Starting filter");
+    connection * connection = ATTACHMENT(key);
+    struct filter_data * filter = &connection->filter;
+    pid_t pid;
+
+    for(int i=0;i<2;i++){
+        filter->write_pipe[i]=-1;
+        filter->read_pipe[i]=-1;
+    }
+
+    if(pipe(filter->write_pipe)<0){
+        log(ERROR,"Error when creating writing pipe for filter");
+    }
+
+    if(pipe(filter->read_pipe)<0){
+        log(ERROR,"Error when creating writing pipe for filter");
+    }
+    buffer_reset(connection->filter_buffer);
+    if((pid = fork()) == 0){
+        filter->slave_proc_pid = -1;
+
+
+        close(STDERR_FILENO);
+        //Cerramos las partes del pipe que no vamos a utilizar
+        close(filter->read_pipe[1]); // Recordar pipe[1] es para escritura y pipe[0] para lectura
+        close(filter->write_pipe[0]);
+
+        //Redireccionamos la entrada estandar al pipe de lectura del proceso y la salida estandar al pipe del proceso
+        if((dup2(filter->read_pipe[0],STDIN_FILENO)<0) || (dup2(filter->write_pipe[1],STDOUT_FILENO)<0)){
+            log(ERROR,"Error when dup2 on filter process");
+        }
+        // Cerramos los fds ya que estan mapeados en STDING y STDOUT
+        close(filter->read_pipe[0]); 
+        close(filter->write_pipe[1]);
+
+        open(pop3_proxy_args.error_file,O_WRONLY | O_APPEND); // O_APPEND indica que escriba a partir del final del archivo
+
+        //TODO: Setear variables de entorno
+        if(execl("/bin/sh","sh","-c",pop3_proxy_args.filter,(char * )0) < 0){
+            log(ERROR,"Executing command");
+            close(filter->read_pipe[0]);
+            close(filter->write_pipe[1]);
+        }
+    }else{
+        filter->slave_proc_pid = pid;
+        
+        //Cerramos las partes del pipe que no vamos a utilizar
+        close(filter->write_pipe[1]);
+        filter->write_pipe[1] = -1;
+        close(filter->read_pipe[0]);
+        filter->read_pipe[0] = -1;
+
+        if( (selector_fd_set_nio(filter->write_pipe[0]) < 0) || (selector_fd_set_nio(filter->read_pipe[1]) < 0)){
+            log(ERROR,"Failed to set not blocking to filter sockets on proxy");
+            // TODO SI HAY QUE ABORTAR LA CONEXION O QUE.
+        }
+
+        if( (selector_register(key->s,filter->write_pipe[0],&proxy_handler,OP_NOOP,connection)!= SELECTOR_SUCCESS) || (selector_register(key->s,filter->read_pipe[1],&proxy_handler,OP_NOOP,connection)!= SELECTOR_SUCCESS) )
+        {
+            log(ERROR,"Failed to register filter fds");
+            // TODO : VER Q MANEJO HACER ACA
+        }
+
+        connection->references+=2;
+
+    }
+
+}
+
 /////////////////// FUNCIONES DE EL ESTADO COPYING ////////////////////////////////////////
 
 static struct copy *copy_ptr(struct selector_key *key)
 {
     struct copy *copy_client = &(ATTACHMENT(key)->copy_client);
+    struct copy *copy_origin = &(ATTACHMENT(key)->copy_origin);
+    struct copy *copy_filter = &(ATTACHMENT(key)->copy_filter);
+
 
     if (*copy_client->fd == key->fd)
     {
         return copy_client;
+    }else if(*copy_origin->fd == key->fd){
+        return copy_origin;
     }
 
-    return copy_client->other;
+    return copy_filter;
 }
 
 static void on_arrival_copying(const unsigned state, struct selector_key *key)
@@ -732,40 +852,31 @@ static void on_arrival_copying(const unsigned state, struct selector_key *key)
     connection *connection = ATTACHMENT(key);
     struct copy *copy_client = &(connection->copy_client);
     struct copy *copy_origin = &(connection->copy_origin);
+    struct copy *copy_filter = &(connection->copy_filter);
 
     copy_client->fd = &connection->client_fd;
     copy_client->read_buffer = connection->read_buffer;
     copy_client->write_buffer = connection->write_buffer;
     copy_client->duplex = OP_READ | OP_WRITE; // TODO: Asignar dependiendo de las reglas de pop 3
     copy_client->other = copy_origin;
+    copy_client->target = CLIENT;
 
     copy_origin->fd = &connection->origin_fd;
     copy_origin->read_buffer = connection->write_buffer;
     copy_origin->write_buffer = connection->read_buffer;
     copy_origin->duplex = OP_READ | OP_WRITE; // TODO: Asignar dependiendo de las reglas de pop 3
     copy_origin->other = copy_client;
+    copy_origin->target =ORIGIN;
+
+    copy_filter->read_buffer = connection->filter_buffer;
+    copy_filter->write_buffer = connection->write_buffer;
+    copy_filter->duplex = OP_READ | OP_WRITE; // TODO: Asignar dependiendo de las reglas de pop 3
+    copy_filter->other = NULL;
+    copy_filter->target = FILTER;
+
+    connection->filter.state = FILTER_CLOSE;
 }
 
-static fd_interest copy_compute_interests(fd_selector s, struct copy *copy)
-{
-    fd_interest ret = OP_NOOP;
-    if ((copy->duplex & OP_READ) && buffer_can_write(copy->read_buffer))
-    {
-        ret |= OP_READ;
-    }
-    if ((copy->duplex & OP_WRITE) && buffer_can_read(copy->write_buffer))
-    {
-        ret |= OP_WRITE;
-    }
-
-    selector_status sel_status = selector_set_interest(s, *copy->fd, ret);
-    if (sel_status != SELECTOR_SUCCESS)
-    {
-        abort();
-    }
-
-    return ret;
-}
 
 void on_departure_copying(const unsigned state, struct selector_key *key)
 {
@@ -773,80 +884,405 @@ void on_departure_copying(const unsigned state, struct selector_key *key)
     connection_destroy(ATTACHMENT(key));
 }
 
-// Habria que hacer el manejo de dessetear el FD
-unsigned on_read_ready_copying(struct selector_key *key)
-{
-    struct copy *copy = copy_ptr(key);
+void shut_down_copy(struct copy *copy,bool closeRead){
+        log(ERROR, "Readed 0 or error on client. Error: %s", strerror(errno));
+        shutdown(*copy->fd, (closeRead)?SHUT_RD:SHUT_WR);
+        copy->duplex &= (closeRead)? ~OP_READ:~OP_WRITE; // le sacamos el interes de lectura o escritura segun corresponda
+        if (*copy->other->fd != -1)
+        {
+            // apagar el otro para lectura o escritura segun corresponda
+            shutdown(*copy->other->fd, (closeRead)?SHUT_WR:SHUT_RD);
+            copy->other->duplex &= (closeRead)? ~OP_WRITE:~OP_READ;
+        }
+}
 
+unsigned read_and_process_client(struct selector_key *key,struct copy *copy){
     size_t max_size_to_read;
     ssize_t readed;
     buffer *buffer = copy->read_buffer;
     unsigned ret_value = COPYING;
 
     uint8_t *ptr = buffer_write_ptr(buffer, &max_size_to_read);
+
     readed = recv(key->fd, ptr, max_size_to_read, 0);
-    // log(DEBUG, "Reading from fd=%d , bytes = %d, max_cant = %d", key->fd, readed, max_size_to_read);
+       
     if (readed > 0)
     {
         buffer_write_adv(buffer, readed);
     }
     else
     {
-        // apagar ese fd de lectura
-        log(ERROR, "Readed 0 or error. Error: %s", strerror(errno));
-        shutdown(*copy->fd, SHUT_RD);
-        copy->duplex &= ~OP_READ; // le sacamos el interes de lectura
-        if (*copy->other->fd != -1)
-        {
-            // apagar el otro para escritura
-            shutdown(*copy->other->fd, SHUT_WR);
-            copy->other->duplex &= ~OP_WRITE;
-        }
-        // TODO: Ver si no se tendria que retornar a error y cerrar las conexiones que quedaron abiertas.
+        shut_down_copy(copy,true);
+    }
+    return ret_value;
+}
+
+static unsigned analize_process_response(connection * connection, buffer * buffer, bool interest_retr, bool to_new_command) {
+    unsigned ret = COPYING;
+    bool errored = false, new_response = false;
+    size_t size;
+    uint8_t * ptr = buffer_read_ptr(buffer,&size);
+    const command_response_state state = command_response_parser_consume_until(&connection->command_response_parser, 
+    ptr,size, connection->current_command, interest_retr, to_new_command, &errored); 
+    if(errored) {
+        connection->error_data.err_msg = "-ERR Unexpected event\r\n";
+        ret = ERROR_W_MESSAGE_ST;
+    }
+    else if(interest_retr && state == RESPONSE_INTEREST){ 
+        connection->filter.state = FILTER_START;
+        log(DEBUG,"Filter is interest in response");
     }
 
-    copy_compute_interests(key->s, copy);
-    copy_compute_interests(key->s, copy->other);
+    analize_response(connection, &new_response);
+    if(new_response)
+        connection->is_awaiting_response_from_origin = false;
 
-    if (copy->duplex == OP_NOOP)
+    return ret;        
+}
+
+static void analize_response(connection * connection, bool * new_response) {
+    char * username;
+    size_t username_len;
+    
+    if(connection->current_command->type != -2) {
+        command_instance * current = connection->current_command;
+        *new_response = true;
+        if(!connection->session.is_logged) {
+            if(current->type == CMD_USER && current->indicator) {
+                username = get_user(*current);
+                username_len = strlen(username) + 1;  //checkear size mayor 40
+                memcpy(connection->session.name, username, username_len);
+            } else if(current->type == CMD_PASS && current->indicator) {
+                log(DEBUG,"Logged user: %s", connection->session.name);
+                connection->session.is_logged = true;
+            } else if(current->type == CMD_APOP && current->indicator) {
+                username = get_user(*current);
+                username_len = strlen(username) + 1;  //checkear size mayor 40
+                memcpy(connection->session.name, username, username_len);
+                connection->session.is_logged = true;
+            }
+        }
+        connection->current_command->type = -2;
+    }
+}
+
+unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
+    connection * connection = ATTACHMENT(key);
+    struct filter_data * filter = &connection->filter;
+
+    size_t max_size_to_read;
+    ssize_t readed;
+    buffer *buffer = copy->read_buffer; ;
+    unsigned ret_value = COPYING;
+
+     
+    uint8_t *ptr = buffer_write_ptr(buffer, &max_size_to_read);
+
+    readed = recv(key->fd, ptr, max_size_to_read, 0);
+       
+    if (readed > 0)
+    {         
+        buffer_write_adv(buffer, readed);
+        if(connection->filter.state == FILTER_CLOSE){
+            analize_process_response(connection,buffer,true,true); // El ante ultimo es true por que nos interesa setear para el filter si es de interes la respuesta
+        }
+    }
+    else
+    {
+        shut_down_copy(copy,true);
+        if(filter->state == FILTER_WORKING && !buffer_can_read(connection->filter_buffer)){
+            filter->state=FILTER_FINISHED_SENDING;
+        }
+    }
+
+    return ret_value;
+}
+
+static void filter_close(struct selector_key *key){
+    log(DEBUG,"Closing filter");
+    connection * connection = ATTACHMENT(key);
+    struct filter_data * filter = &connection->filter;
+
+    if(filter->slave_proc_pid >0){
+         kill(filter->slave_proc_pid,SIGKILL);
+    }else{
+        return;
+    }
+
+    for(int i=0;i<2;i++){
+        if(filter->read_pipe[i] > 0){
+            selector_unregister_fd(key->s,filter->read_pipe[i]);
+            close(filter->read_pipe[i]);
+        }
+        if(filter->write_pipe[i] > 0){
+            selector_unregister_fd(key->s,filter->write_pipe[i]);
+            close(filter->write_pipe[i]);
+        }
+    }
+    memset(filter,0,sizeof(struct filter_data));
+    connection->filter.slave_proc_pid = -1;
+    connection->filter.state = FILTER_CLOSE;
+}
+
+unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
+    size_t max_size_to_read;
+    ssize_t readed;
+    buffer *buffer = copy->read_buffer;
+    unsigned ret_value = COPYING;
+    connection *connection = ATTACHMENT(key);
+
+    uint8_t *ptr = buffer_write_ptr(buffer, &max_size_to_read);
+    errno=0;
+    readed = read(key->fd, ptr, max_size_to_read);
+    
+       
+    if (readed > 0)
+    {
+        buffer_write_adv(buffer, readed);
+    }
+    else if( readed ==0)
+    {
+        filter_close(key);
+        analize_process_response(connection,connection->write_buffer,false,true);
+    }else{
+        log(ERROR,"Error when reading from filter. Error = %s",strerror(errno));
+    }
+
+    return ret_value;
+}
+
+void filter_compute_interest(struct selector_key *key){
+    struct filter_data *filter = &ATTACHMENT(key)->filter;
+    struct copy *copy = &ATTACHMENT(key)->copy_filter;
+
+    if(filter->state == FILTER_WORKING){
+        if(buffer_can_read(copy->write_buffer)){
+            if(selector_set_interest(key->s,filter->read_pipe[1],OP_WRITE)!= SELECTOR_SUCCESS){
+                log(ERROR,"Failed to set write interest to filter");
+            }
+        }
+    }
+    if(buffer_can_write(copy->read_buffer)){
+         if(selector_set_interest(key->s,filter->write_pipe[0],OP_READ)!= SELECTOR_SUCCESS){
+            log(ERROR,"Failed to set read interest to filter");
+        }
+    }
+}
+
+static fd_interest compute_interest(struct selector_key *key, struct copy *copy,bool can_write, bool can_read)
+{
+     fd_interest ret = OP_NOOP;
+    if ((copy->duplex & OP_READ) && can_read)
+    {
+        ret |= OP_READ;
+    }
+    if ((copy->duplex & OP_WRITE) && can_write)
+    {
+        ret |= OP_WRITE;
+    }
+
+    if (selector_set_interest(key->s, *copy->fd, ret) != SELECTOR_SUCCESS)
+    {
+        log(ERROR,"Failed to set interests to fd in copy_compute_interests");
+        abort();// TODO: VER SI CORRESPONDE ABORTAR
+    }
+
+    return ret;
+}
+static fd_interest client_compute_interest(struct selector_key *key)
+{
+    connection *connection = ATTACHMENT(key);
+    struct copy *copy = &connection->copy_client;
+    
+    bool writeFromOrigin = buffer_can_read(copy->write_buffer) && (connection->filter.state == FILTER_START ||connection->filter.state == FILTER_CLOSE); // Todavia no esta el filtro 
+
+    bool writeFromFilter = buffer_can_read(connection->copy_filter.read_buffer) && (connection->filter.state == FILTER_WORKING ||connection->filter.state == FILTER_FINISHED_SENDING);
+
+    return compute_interest(key,copy,(writeFromFilter || writeFromOrigin),buffer_can_write(copy->read_buffer));
+}
+
+static fd_interest origin_compute_interest(struct selector_key *key)
+{
+    connection *connection = ATTACHMENT(key);
+    struct copy *copy = &connection->copy_origin;
+    bool origin_want_write = !connection->is_awaiting_response_from_origin;
+   return compute_interest(key,copy,(origin_want_write && buffer_can_read(copy->write_buffer)), buffer_can_write(copy->read_buffer));  
+}
+
+
+void copy_compute_interests(struct selector_key *key){
+    connection *connection = ATTACHMENT(key);
+    struct filter_data *filter = &connection->filter;
+
+    switch (filter->state)
+    {
+        case FILTER_START:
+            if(filter->slave_proc_pid == -1){
+                filter_init(key);
+            }
+            if(buffer_can_read(connection->write_buffer)){
+                filter->state = FILTER_WORKING;
+                filter_compute_interest(key);
+            }
+            break;
+        
+        case FILTER_FINISHED_SENDING:
+            if(filter->read_pipe[1] != -1){
+                selector_unregister_fd(key->s,filter->read_pipe[1]);
+                close(filter->read_pipe[1]);
+                filter->read_pipe[1] = -1;
+            }
+            break;
+        case FILTER_ENDING:
+            filter_close(key);
+            filter->state = FILTER_CLOSE;
+            break;
+
+        case FILTER_WORKING:
+            filter_compute_interest(key);
+        default:
+         break;
+    }
+
+    client_compute_interest(key);
+    origin_compute_interest(key);
+}
+
+
+unsigned on_read_ready_copying(struct selector_key *key)
+{
+    struct copy *copy = copy_ptr(key);
+    unsigned ret_value = COPYING;
+
+    switch (copy->target)
+    {
+    case CLIENT:
+        ret_value =read_and_process_client(key,copy);
+        break;
+    
+    case ORIGIN:
+        ret_value=read_and_process_origin(key,copy);
+        break;
+
+    case FILTER:
+        ret_value=read_and_process_filter(key,copy);
+        break;
+    }
+
+    copy_compute_interests(key);
+
+    if (copy->duplex == OP_NOOP && ATTACHMENT(key)->filter.state == FILTER_CLOSE)
     {
         ret_value = DONE;
     }
 
     return ret_value;
 }
-unsigned on_write_ready_copying(struct selector_key *key)
-{
 
-    struct copy *copy = copy_ptr(key);
+static unsigned send_to_client(struct selector_key *key,struct copy *copy){
+    unsigned ret_value = COPYING;
+    size_t max_size_to_write;
+    ssize_t sended;
+    buffer *buffer;
+    uint8_t *ptr;
+    connection *connection = ATTACHMENT(key);
+    struct filter_data filter = connection->filter;
 
+    if((filter.state == FILTER_WORKING) || (filter.state == FILTER_FINISHED_SENDING) ){
+        buffer = connection->copy_filter.read_buffer;
+        ptr = buffer_read_ptr(buffer,&max_size_to_write);
+    }else{
+        buffer = copy->write_buffer;
+        ptr = buffer_read_ptr(buffer, &max_size_to_write);
+    }
+
+    sended = send(key->fd, ptr, max_size_to_write, MSG_NOSIGNAL);
+
+    if(sended<0){
+        shut_down_copy(copy,false);
+    }else{
+        buffer_read_adv(buffer,sended);
+    }
+
+    return ret_value;
+}
+
+static unsigned send_to_origin(struct selector_key *key,struct copy *copy){
+    connection *connection = ATTACHMENT(key);
+    unsigned ret_value = COPYING;
     size_t max_size_to_write;
     ssize_t sended;
     buffer *buffer = copy->write_buffer;
-    unsigned ret_value = COPYING;
     uint8_t *ptr = buffer_read_ptr(buffer, &max_size_to_write);
-    sended = send(key->fd, ptr, max_size_to_write, MSG_NOSIGNAL);
+    command_state command_state;
+    size_t to_send =0;
 
-    if (sended <= 0)
-    {
-        // apagar ese fd de escritura
-        log(DEBUG, "Sended 0 or error. ERRNO");
-        shutdown(*copy->fd, SHUT_WR);
-        copy->duplex &= ~OP_WRITE; // le sacamos el interes de escritura
-        if (*copy->other->fd != -1)
-        {
-            // apagar el otro para lectura
-            //  shutdown(*copy->other->fd,SHUT_RD);
-            copy->other->duplex &= ~OP_READ;
+    command_state = command_parser_consume(&connection->command_parser,buffer,false,&connection->is_awaiting_response_from_origin,&to_send);
+    
+    if(connection->is_awaiting_response_from_origin){
+        memcpy(connection->current_command,&connection->command_parser.current_command,sizeof(command_instance));
+    }
+
+    sended = send(key->fd, ptr, to_send, MSG_NOSIGNAL);
+
+    if(sended<0){
+        shut_down_copy(copy,false);
+    }else{
+        // No se avanza el puntero de lectura aca por que ya lo hizo el parser al procesar el comando
+    }
+
+    return ret_value;
+}
+
+static unsigned write_to_filter(struct selector_key *key,struct copy *copy){
+    unsigned ret_value = COPYING;
+    size_t max_size_to_write;
+    ssize_t sended;
+    connection *connection = ATTACHMENT(key);
+    buffer *buffer = copy->write_buffer;
+    uint8_t *ptr = buffer_read_ptr(buffer, &max_size_to_write);
+
+    ret_value = analize_process_response(connection,buffer,false,true);
+    sended = write(key->fd, ptr, max_size_to_write);
+
+    if(sended<0){
+        connection->filter.state = FILTER_FINISHED_SENDING;
+    }else if(sended == 0){
+        // Filter sendded EOF
+        filter_close(key);
+
+        /// TODO ANALIZAR que quedo en el buffer
+    }else{
+        buffer_read_adv(buffer,sended);
+        if(connection->command_response_parser.state == RESPONSE_INIT && !buffer_can_read(buffer)){
+            connection->filter.state = FILTER_FINISHED_SENDING;
         }
     }
-    else
-    {
-        buffer_read_adv(buffer, sended);
-    }
 
-    copy_compute_interests(key->s, copy);
-    copy_compute_interests(key->s, copy->other);
+    return ret_value;
+}
+unsigned on_write_ready_copying(struct selector_key *key)
+{
+    struct copy *copy = copy_ptr(key);
+
+    unsigned ret_value = COPYING;
+
+    switch (copy->target)
+    {
+        case CLIENT:
+            ret_value=send_to_client(key,copy);
+            break;
+
+        case FILTER:
+            ret_value= write_to_filter(key,copy);
+            break;
+
+        case ORIGIN:
+            ret_value=send_to_origin(key,copy);
+            break;
+    
+    }
+    copy_compute_interests(key);
 
     if (copy->duplex == OP_NOOP)
     {
