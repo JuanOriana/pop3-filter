@@ -16,6 +16,7 @@ request_sap get_sap_request(buffer *buffer)
     size_t size;
     void *buffer_read_pointer = buffer_read_ptr(buffer, &size);
 
+    // https://wiki.sei.cmu.edu/confluence/display/c/POS39-C.+Use+the+correct+byte+ordering+when+transferring+data+between+systems ntohl function explanation
     new_request_datagram->credential = ntohl(*((uint32_t *)buffer_read_pointer));
     buffer_read_adv(buffer, sizeof(new_request_datagram->credential)); // advance buffer pointer to next field
 
