@@ -179,7 +179,7 @@ static const struct fd_handler proxy_handler = {
     .handle_time_out = proxy_time_out,
 };
 
-static void analize_response(connection * connection, bool * new_response);
+static void analize_response(connection * connection);
 
 unsigned on_read_ready_copying(struct selector_key *key);
 unsigned on_write_ready_copying(struct selector_key *key);
@@ -932,20 +932,20 @@ static unsigned analize_process_response(connection * connection, buffer * buffe
         log(DEBUG,"Filter is interest in response");
     }
 
-    analize_response(connection, &new_response);
-    if(new_response)
+    if(state == RESPONSE_INIT) {
+        analize_response(connection);
         connection->is_awaiting_response_from_origin = false;
+    }
 
     return ret;        
 }
 
-static void analize_response(connection * connection, bool * new_response) {
+static void analize_response(connection * connection) {
     char * username;
     size_t username_len;
     
     if(connection->current_command->type != -2) {
         command_instance * current = connection->current_command;
-        *new_response = true;
         if(!connection->session.is_logged) {
             if(current->type == CMD_USER && current->indicator) {
                 username = get_user(*current);
