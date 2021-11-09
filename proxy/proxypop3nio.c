@@ -780,8 +780,9 @@ static void filter_init(struct selector_key * key){
     if((pid = fork()) == 0){
         filter->slave_proc_pid = -1;
 
-
         close(STDERR_FILENO);
+        open(pop3_proxy_args.error_file, O_WRONLY | O_APPEND);
+
         //Cerramos las partes del pipe que no vamos a utilizar
         close(filter->read_pipe[1]); // Recordar pipe[1] es para escritura y pipe[0] para lectura
         close(filter->write_pipe[0]);
@@ -793,8 +794,6 @@ static void filter_init(struct selector_key * key){
         // Cerramos los fds ya que estan mapeados en STDING y STDOUT
         close(filter->read_pipe[0]); 
         close(filter->write_pipe[1]);
-
-        open(pop3_proxy_args.error_file,O_WRONLY | O_APPEND); // O_APPEND indica que escriba a partir del final del archivo
 
         //TODO: Setear variables de entorno
         if(execl("/bin/sh","sh","-c",pop3_proxy_args.filter,(char * )0) < 0){
