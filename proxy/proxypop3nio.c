@@ -924,11 +924,11 @@ static unsigned analize_process_response(connection * connection, buffer * buffe
     uint8_t * ptr = buffer_read_ptr(buffer,&size);
     const command_response_state state = command_response_parser_consume_until(&connection->command_response_parser, 
     ptr,size, connection->current_command, interest_retr, to_new_command, &errored); 
-    if(errored) {
+    if(errored) { // Esto corresponde a que el origin devuelva una respuesta mal formateada (?)
         connection->error_data.err_msg = "-ERR Unexpected event\r\n";
         ret = ERROR_W_MESSAGE_ST;
     }
-    else if(interest_retr && state == RESPONSE_INTEREST){ 
+    else if(interest_retr && state == RESPONSE_INTEREST){  // Hay un interes de filtrar, filtremos entonces
         connection->filter.state = FILTER_START;
         log(DEBUG,"Filter is interest in response");
     }
@@ -984,7 +984,7 @@ unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
     {         
         buffer_write_adv(buffer, readed);
         if(connection->filter.state == FILTER_CLOSE){
-            analize_process_response(connection,buffer,true,true); // El ante ultimo es true por que nos interesa setear para el filter si es de interes la respuesta
+            ret_value = analize_process_response(connection,buffer,true,true); // El ante ultimo es true por que nos interesa setear para el filter si es de interes la respuesta
         }
     }
     else
@@ -1218,7 +1218,7 @@ static unsigned send_to_origin(struct selector_key *key,struct copy *copy){
     size_t to_send =0;
 
     command_state = command_parser_consume(&connection->command_parser,buffer,false,&connection->is_awaiting_response_from_origin,&to_send);
-    
+
     if(connection->is_awaiting_response_from_origin){
         memcpy(connection->current_command,&connection->command_parser.current_command,sizeof(command_instance));
     }
@@ -1226,6 +1226,7 @@ static unsigned send_to_origin(struct selector_key *key,struct copy *copy){
     sended = send(key->fd, ptr, to_send, MSG_NOSIGNAL);
 
     if(sended<0){
+        log(DEBUG,"Origin in write ready is closing connection");
         shut_down_copy(copy,false);
     }else{
         // No se avanza el puntero de lectura aca por que ya lo hizo el parser al procesar el comando
