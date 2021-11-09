@@ -9,9 +9,8 @@ parsers:
 utils:
 	cd utils; make all
 
-utils:
-	cd utils; make all
-
+proxy:
+	cd proxy; make all
 
 clean:	
 	cd utils; make clean
