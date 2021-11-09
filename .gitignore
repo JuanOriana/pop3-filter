@@ -3,3 +3,4 @@ main
 *.dYSM
 *.dYSM/*
 .idea
+*.o
