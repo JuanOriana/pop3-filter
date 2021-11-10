@@ -53,6 +53,13 @@ void command_parser_init(command_parser * parser);
 /** entrega un byte al parser. retorna true si se llego al final  */
 command_state command_parser_feed(command_parser * parser, const char c, bool * finished);
 
+/** modularizaciones para command_parser_feed*/
+static inline void command_type_state (command_parser * parser, const char c, bool * finished, command_instance * current_command);
+static inline void command_args_state (command_parser * parser, const char c, bool * finished, command_instance * current_command);
+static inline void command_crlf_state (command_parser * parser, const char c, bool * finished, command_instance * current_command);
+static inline void command_error_state (command_parser * parser, const char c, bool * finished, command_instance * current_command);
+
+
 /**
  * por cada elemento del buffer llama a `commandParserFeed' hasta que
  * el parseo se encuentra completo o se requieren mas bytes.
