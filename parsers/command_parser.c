@@ -46,7 +46,7 @@ static const command_data all_command_data[] = {
 static void command_init(command_instance * command);
 
 static void handle_command_parsed(command_instance * current_command, command_parser * parser, bool * finished, bool not_match);
-
+static inline void crlf_state (command_parser * parser, const char c, bool * finished, command_instance * current_command);
 
 void command_parser_init(command_parser * parser) {
     parser->state          = COMMAND_TYPE;
@@ -140,13 +140,15 @@ command_state command_parser_feed(command_parser * parser, const char c, bool * 
             break;
 
         case COMMAND_CRLF:
+            crlf_state(parser, c, finished, current_command);
+            /*log(DEBUG, "EStoy en CRLF");
             if(c == '\r' && parser->crlf_state == 0) {
                 parser->crlf_state = 1;
             } else if(c == '\n' && parser->crlf_state == 1){
                 handle_command_parsed(current_command, parser, finished, false);
             }else {
                 parser->state = COMMAND_ERROR;
-            }
+            }*/
             break;
 
         case COMMAND_ERROR:
@@ -219,3 +221,17 @@ static void handle_command_parsed(command_instance * current_command, command_pa
     *finished = true;
 
 }
+
+/**/
+static inline void crlf_state (command_parser * parser, const char c, bool * finished, command_instance * current_command)
+{
+    log(DEBUG, "EStoy en CRLF");
+    if(c == '\r' && parser->crlf_state == 0) {
+        parser->crlf_state = 1;
+    } else if(c == '\n' && parser->crlf_state == 1){
+        handle_command_parsed(current_command, parser, finished, false);
+    }else {
+        parser->state = COMMAND_ERROR;
+    }
+}
+/**/
