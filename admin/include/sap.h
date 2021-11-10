@@ -1,57 +1,83 @@
 #ifndef SAP_H
 #define SAP_H
 
-#include "buffer.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdint.h>
 
-#define RESPONSE_HEADER_SIZE (4 * sizeof(uint32_t))
-
-typedef enum operation_code
+typedef enum op_code
 {
-    LOGIN = 1,
-    //........
-} operation_code;
+    OP_STATS,
+    OP_GET_BUFF_SIZE,
+    OP_SET_BUFF_SIZE,
+    OP_GET_TIMEOUT,
+    OP_SET_TIMEOUT,
+    OP_GET_ERROR_FILE,
+    OP_SET_ERROR_FILE,
+    OP_GET_FILTER,
+    OP_SET_FILTER,
+    OP_IS_FILTER_WORKING,
+    OP_TOGGLE_FILTER
+} op_code;
 
 typedef enum server_version
 {
-    V_1_0_0 = 1,
+    SAP_V_1_0_0 = 1,
 } server_version;
 
-typedef struct request_sap
+typedef enum status_code
 {
-    char credential[8];
-    server_version s_version;
-    operation_code op_code;
-    size_t data_length;
-    void *data;
-} request_sap;
+    SC_OK = 0,
+    SC_COMMAND_UNSUPPORTED = 10,
+    SC_COMMAND_INVALID_ARGS= 11,
+    SC_UNAUTHORIZED = 20,
+    SC_VERSION_UNKNOWN = 30,
+    SC_INTERNAL_SERVER_ERROR = 40,
+} status_code;
 
-typedef enum response_code
+typedef enum data_type_correspondence
 {
-    RESP_POSITIVE_OK = 200,
-    RESP_NEGATIVE_BAD_REQUEST = 400,
-    RESP_NEGATIVE_INTERNAL_SERVER_ERROR = 500,
-    //........
-} response_code;
+    SAP_BLANK,
+    SAP_SINGLE,
+    SAP_SHORT,
+    SAP_LONG,
+    SAP_STRING,
+} data_type_correspondence;
 
-typedef struct response_sap
+typedef union sap_data_type
 {
-    response_code response_code;
-    size_t data_length;
-    void *data;
-} response_sap;
+    uint8_t sap_single;
+    uint16_t sap_short;
+    uint32_t sap_long;
+    char * string;
 
-request_sap get_sap_request(buffer *buffer);
-response_sap create_new_sap_response(response_code response_code, size_t data_length, void *data);
+}sap_data_type;
 
-size_t get_sap_response_size(response_sap *response);
+typedef struct sap_request
+{
+    server_version v_type;
+    uint32_t auth_id;
+    op_code op_code;
+    uint16_t req_id;
+    sap_data_type data;
+} sap_request;
 
-void prepare_sap_response(buffer *buffer, response_sap *response);
+typedef struct sap_response
+{
+    server_version v_type;
+    status_code status_code;
+    uint16_t req_id;
+    sap_data_type data;
+} sap_response;
 
-void free_sap_request(request_sap *request);
-void free_sap_response(response_sap *response);
+sap_request * get_sap_request(uint8_t *buffer);
+sap_response * create_new_sap_response(server_version v_type, status_code status_code, uint16_t req_id,sap_data_type data);
+//void prepare_sap_response(buffer *buffer, sap_response *response);
+
+void free_sap_request(sap_request *request);
+void free_sap_response(sap_response *response);
+
+char* sap_error(status_code status_code);
 
 #endif
