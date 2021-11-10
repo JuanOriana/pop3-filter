@@ -927,7 +927,7 @@ static unsigned analize_process_response(connection * connection, buffer * buffe
         connection->error_data.err_msg = "-ERR Unexpected event\r\n";
         ret = ERROR_W_MESSAGE_ST;
     }
-    else if(interest_retr && state == RESPONSE_INTEREST){  // Hay un interes de filtrar, filtremos entonces
+    else if(interest_retr && connection->command_response_parser.is_starting_body){  // Hay un interes de filtrar, filtremos entonces
         connection->filter.state = FILTER_START;
         log(DEBUG,"Filter is interest in response");
     }
@@ -983,7 +983,8 @@ unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
     {         
         buffer_write_adv(buffer, readed);
         if(connection->filter.state == FILTER_CLOSE){
-            ret_value = analize_process_response(connection,buffer,true,true); // El ante ultimo es true por que nos interesa setear para el filter si es de interes la respuesta
+            ret_value = analize_process_response(connection,buffer,connection->current_command->type == CMD_RETR,
+                                                 true); // El ante ultimo es true por que nos interesa setear para el filter si es de interes la respuesta
         }
     }
     else

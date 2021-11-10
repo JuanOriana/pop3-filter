@@ -16,13 +16,13 @@ typedef enum command_response_state {
     RESPONSE_BODY,
     RESPONSE_INLINE_CRLF,
     RESPONSE_MULTILINE_CRLF,
-    RESPONSE_INTEREST,
     RESPONSE_ERROR,
 } command_response_state;
 
 typedef struct command_response_parser {
     size_t        line_size;
     size_t        crlf_state; //0 NONE, 1 \r READ, 2 \n READ. 3 \. READ, 4 \r READ, 5 \n READ
+    bool          is_starting_body; //0 NONE, 1 \r READ, 2 \n READ. 3 \. READ, 4 \r READ, 5 \n READ
     command_t     command_interest;
     command_response_state state;
 } command_response_parser;
