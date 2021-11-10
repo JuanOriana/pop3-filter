@@ -16,6 +16,7 @@
 #include "./utils/include/buffer.h"
 #include "./utils/include/selector.h"
 #include "./utils/include/netutils.h"
+#include "./admin/include/manager_server.h"
 
 #include <sys/signal.h>
 #include "./utils/include/stm.h"
@@ -27,7 +28,7 @@ struct pop3_proxy_args pop3_proxy_args;
 #define MAX_PENDING_CONNECTIONS 20
 #define SELECTOR_SIZE 1024
 
-static int build_passive(IP_REP_TYPE ip_type);
+static int build_passive(IP_REP_TYPE ip_type,passive_type passive_type);
 
 static bool done = false;
 
@@ -35,7 +36,7 @@ int main(int argc, char *argv[])
 {
     const char *err_msg = NULL;
     int ret = 0;
-    int server4 = -1, server6 = -1;
+    int proxy4 = -1, proxy6 = -1, manag4=-1, manag6=-1;
     address_representation origin_representation;
     parse_args(argc, argv, &pop3_proxy_args);
 
@@ -44,34 +45,65 @@ int main(int argc, char *argv[])
     selector_status ss = SELECTOR_SUCCESS;
     fd_selector selector = NULL;
 
-    server4 = build_passive(ADDR_IPV4);
-    if (server4 < 0)
+    proxy4 = build_passive(ADDR_IPV4, PASSIVE_TCP);
+    if (proxy4 < 0)
     {
         log(DEBUG, "Unable to build passive socket in IPv4");
     }
-    else if (selector_fd_set_nio(server4) == -1)
+    else if (selector_fd_set_nio(proxy4) == -1)
     {
         perror("SELECTOR ");
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
 
-    server6 = build_passive(ADDR_IPV6);
+    proxy6 = build_passive(ADDR_IPV6, PASSIVE_TCP);
 
-    if (server6 < 0)
+    if (proxy6 < 0)
     {
         log(DEBUG, "Unable to build passive socket in IPv6");
     }
-    else if (selector_fd_set_nio(server6) == -1)
+    else if (selector_fd_set_nio(proxy6) == -1)
     {
         perror("SELECTOR ");
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
 
-    if (server4 < 0 && server6 < 0)
+    if (proxy4 < 0 && proxy6 < 0)
     {
         log(FATAL, "Couldnt establish ANY passive socket for proxy");
+    }
+
+    manag4 = build_passive(ADDR_IPV4, PASSIVE_UDP);
+
+    if (manag4 < 0)
+    {
+        log(DEBUG, "Unable to build manager passive socket in IPv4");
+    }
+    else if (selector_fd_set_nio(manag4) == -1)
+    {
+        perror("SELECTOR ");
+        err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
+        goto selector_finally;
+    }
+
+    manag6 = build_passive(ADDR_IPV6, PASSIVE_UDP);
+
+    if (manag6 < 0)
+    {
+        log(DEBUG, "Unable to build manager passive socket in IPv6");
+    }
+    else if (selector_fd_set_nio(manag6) == -1)
+    {
+        perror("SELECTOR ");
+        err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
+        goto selector_finally;
+    }
+
+    if (manag4 < 0 && manag6 < 0)
+    {
+        log(FATAL, "Couldnt establish ANY passive socket for manager");
     }
 
     const struct selector_init conf = {
@@ -95,19 +127,25 @@ int main(int argc, char *argv[])
         goto selector_finally;
     }
 
-    const struct fd_handler passive_handler = {
+    const struct fd_handler proxy_passive_handler = {
         .handle_read = proxy_passive_accept,
         .handle_write = NULL,
         .handle_close = NULL, // nada que liberar
+    };
+
+    const struct fd_handler manager_passive_handler = {
+            .handle_read = manager_passive_accept,
+            .handle_write = NULL,
+            .handle_close = NULL, // nada que liberar
     };
 
     // Mando una representacion del origen al selector para generar los sockets activos
     origin_representation.port = pop3_proxy_args.origin_port;
     get_address_representation(&origin_representation, pop3_proxy_args.origin_addr);
 
-    if (server4 >= 0)
+    if (proxy4 >= 0)
     {
-        ss = selector_register(selector, server4, &passive_handler, OP_READ, &origin_representation);
+        ss = selector_register(selector, proxy4, &proxy_passive_handler, OP_READ, &origin_representation);
         if (ss != SELECTOR_SUCCESS)
         {
             err_msg = "registering ipv4 passive fd";
@@ -115,12 +153,32 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (server6 >= 0)
+    if (proxy6 >= 0)
     {
-        ss = selector_register(selector, server6, &passive_handler, OP_READ, &origin_representation);
+        ss = selector_register(selector, proxy6, &proxy_passive_handler, OP_READ, &origin_representation);
         if (ss != SELECTOR_SUCCESS)
         {
             err_msg = "registering ipv6 passive fd";
+            goto selector_finally;
+        }
+    }
+
+    if (proxy4 >= 0)
+    {
+        ss = selector_register(selector, proxy4, &manager_passive_handler, OP_READ, NULL);
+        if (ss != SELECTOR_SUCCESS)
+        {
+            err_msg = "registering ipv4 manager passive fd";
+            goto selector_finally;
+        }
+    }
+
+    if (proxy6 >= 0)
+    {
+        ss = selector_register(selector, proxy6, &manager_passive_handler, OP_READ, NULL);
+        if (ss != SELECTOR_SUCCESS)
+        {
+            err_msg = "registering ipv6 manager passive fd";
             goto selector_finally;
         }
     }
@@ -170,34 +228,37 @@ selector_finally:
     }
     selector_close();
 
-    if (server4 >= 0)
+    if (proxy4 >= 0)
     {
-        close(server4);
+        close(proxy4);
     }
-    if (server6 >= 0)
+    if (proxy6 >= 0)
     {
-        close(server6);
+        close(proxy6);
     }
     connection_pool_destroy();
     return ret;
 }
 
-static int build_passive(IP_REP_TYPE ip_type)
+static int build_passive(IP_REP_TYPE ip_type, passive_type passive_type)
 {
     int opt = TRUE, result = -1;
     int client_socket;
     struct sockaddr_in address;
     struct sockaddr_in6 address_6;
     int net_flag = (ip_type == ADDR_IPV4) ? AF_INET : AF_INET6;
+    int sock_type = passive_type == PASSIVE_UDP ? SOCK_DGRAM : SOCK_STREAM;
+    int port = passive_type == PASSIVE_TCP ? pop3_proxy_args.pop3_proxy_port : pop3_proxy_args.mng_port;
+    char * stringed_addr = passive_type == PASSIVE_TCP ? pop3_proxy_args.pop3_proxy_addr : pop3_proxy_args.mng_addr;
 
-    if ((client_socket = socket(net_flag, SOCK_STREAM, 0)) < 0) // Puede ser 0 por que cerramos el fd 0 para el proxy asi ganamos ud fd mas
+    if ((client_socket = socket(net_flag, sock_type, 0)) < 0) // Puede ser 0 por que cerramos el fd 0 para el proxy asi ganamos ud fd mas
     {
         log(ERROR, "Passive: Socket failed");
         return -1;
     }
 
     // set master socket to allow multiple connections , this is just a good habit, it will work without this
-    if (setsockopt(client_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0)
+    if (passive_type == PASSIVE_TCP && setsockopt(client_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0)
     {
         log(ERROR, "Passive: set socket options failed");
     }
@@ -206,13 +267,13 @@ static int build_passive(IP_REP_TYPE ip_type)
     {
         memset(&address, 0, sizeof(address));
         address.sin_family = AF_INET;
-        if ((result = inet_pton(AF_INET, pop3_proxy_args.pop3_proxy_addr, &address.sin_addr.s_addr)) <= 0)
+        if ((result = inet_pton(AF_INET, stringed_addr, &address.sin_addr.s_addr)) <= 0)
         {
             log(ERROR, "Cant resolve IPv4 stringed address");
             close(client_socket);
             return -1;
         }
-        address.sin_port = htons(pop3_proxy_args.pop3_proxy_port);
+        address.sin_port =  htons(port);
         if (bind(client_socket, (struct sockaddr *)&address, sizeof(address)) < 0)
         {
             log(ERROR, "Passive: bind failed");
@@ -224,8 +285,8 @@ static int build_passive(IP_REP_TYPE ip_type)
     {
         memset(&address_6, 0, sizeof(address_6));
         address_6.sin6_family = AF_INET6;
-        address_6.sin6_port = htons(pop3_proxy_args.pop3_proxy_port);
-        if ((result = inet_pton(AF_INET6, pop3_proxy_args.pop3_proxy_addr, &address_6.sin6_addr)) <= 0)
+        address_6.sin6_port = htons(port);
+        if ((result = inet_pton(AF_INET6, stringed_addr, &address_6.sin6_addr)) <= 0)
         {
             log(ERROR, "Cant resolve IPv6 stringed address");
             close(client_socket);
@@ -240,7 +301,7 @@ static int build_passive(IP_REP_TYPE ip_type)
         }
     }
 
-    if (listen(client_socket, MAX_PENDING_CONNECTIONS) < 0)
+    if (passive_type == PASSIVE_TCP && listen(client_socket, MAX_PENDING_CONNECTIONS) < 0)
     {
         log(ERROR, "Passive: listen socket failed");
         close(client_socket);

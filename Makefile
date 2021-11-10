@@ -19,7 +19,7 @@ clean:
 	cd utils; make clean
 	- rm -f *.o  main report.tasks 
 
-COMMON =  ./utils/buffer.c ./utils/logger.c ./utils/selector.c ./utils/stm.c ./proxy/proxypop3nio.c ./utils/netutils.c ./parsers/hello_parser.c ./parsers/command_parser.c ./parsers/command_response_parser.c ./admin/sap.c
+COMMON =  ./utils/buffer.c ./utils/logger.c ./utils/selector.c ./utils/stm.c ./proxy/proxypop3nio.c ./utils/netutils.c ./parsers/hello_parser.c ./parsers/command_parser.c ./parsers/command_response_parser.c ./admin/sap.c ./admin/manager_server.c
 
 main:      
 	$(COMPILER) $(CFLAGS) -o main main.c args.c $(COMMON)

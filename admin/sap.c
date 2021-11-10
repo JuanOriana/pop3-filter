@@ -9,7 +9,7 @@ static data_type_correspondence op_to_req_data_type(op_code op_code);
 static data_type_correspondence op_to_resp_data_type(op_code op_code);
 static int get_packet_size(packet_type packet_type, op_code op_code, char* data);
 
-sap_request * sap_buffer_to_request(uint8_t *buffer)
+sap_request * sap_buffer_to_request(char *buffer)
 {
     size_t len;
 
@@ -79,9 +79,10 @@ sap_response * create_new_sap_response(server_version v_type, status_code status
     return new_response_datagram;
 }
 
-uint8_t * sap_response_to_buffer(sap_response * response){
+char * sap_response_to_buffer(sap_response * response, int* size){
     int len, to_copy;
-    uint8_t * buffer = calloc(1, get_packet_size(SAP_RESP,response->op_code,response->data.string));
+    *size = get_packet_size(SAP_RESP,response->op_code,response->data.string);
+    char * buffer = calloc(1, *size);
     char* buffer_travel = buffer;
 
     to_copy = response->v_type;
@@ -117,9 +118,7 @@ uint8_t * sap_response_to_buffer(sap_response * response){
         case SAP_BLANK:
         default:
             break;
-
     }
-
 
     return buffer;
 }
