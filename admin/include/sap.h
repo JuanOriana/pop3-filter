@@ -6,6 +6,14 @@
 #include <unistd.h>
 #include <stdint.h>
 
+#define SAP_REQ_HEADER_SIZE 8
+#define SAP_RESP_HEADER_SIZE 4
+
+typedef enum packet_type{
+    SAP_REQ,
+    SAP_RESP
+}packet_type;
+
 typedef enum op_code
 {
     OP_STATS,
@@ -67,11 +75,14 @@ typedef struct sap_response
 {
     server_version v_type;
     status_code status_code;
+    // Op code its responding to. This is NOT sent in the protocol but it helps for size and type calcs.
+    op_code op_code;
     uint16_t req_id;
     sap_data_type data;
 } sap_response;
 
-sap_request * get_sap_request(uint8_t *buffer);
+sap_request * sap_buffer_to_request(uint8_t *buffer);
+uint8_t * sap_response_to_buffer(sap_response * response);
 sap_response * create_new_sap_response(server_version v_type, status_code status_code, uint16_t req_id,sap_data_type data);
 //void prepare_sap_response(buffer *buffer, sap_response *response);
 

@@ -6,8 +6,10 @@
 #include "../utils/include/logger.h"
 
 static data_type_correspondence op_to_req_data_type(op_code op_code);
+static data_type_correspondence op_to_resp_data_type(op_code op_code);
+static int get_packet_size(packet_type packet_type, op_code op_code, char* data);
 
-sap_request * get_sap_request(uint8_t *buffer)
+sap_request * sap_buffer_to_request(uint8_t *buffer)
 {
     size_t len;
 
@@ -77,40 +79,52 @@ sap_response * create_new_sap_response(server_version v_type, status_code status
     return new_response_datagram;
 }
 
+uint8_t * sap_response_to_buffer(sap_response * response){
+    int len, to_copy;
+    uint8_t * buffer = calloc(1, get_packet_size(SAP_RESP,response->op_code,response->data.string));
+    char* buffer_travel = buffer;
 
-//void prepare_sap_response(buffer *buffer, sap_response *response)
-//{
-//    if (response == NULL || buffer == NULL)
-//    {
-//        // ERROR
-//    }
-//
-//    size_t size;
-//    void *buffer_write_pointer = buffer_write_ptr(buffer, &size);
-//    if (size < RESPONSE_HEADER_SIZE)
-//    {
-//        // ERROR: no enough space in write buffer
-//    }
-//
-//    memset(buffer_write_pointer, 0, get_sap_response_size(response)); // clean buffer
-//
-//    int field_bytes;
-//    char *buffer_current_pointer = buffer_write_pointer;
-//
-//    field_bytes = htonl(response->response_code);
-//    memcpy(buffer_current_pointer, &field_bytes, sizeof(uint32_t));
-//
-//    buffer_current_pointer += sizeof(uint32_t); // sizeof response_code field
-//
-//    field_bytes = htonl(response->data_length);
-//    memcpy(buffer_current_pointer, &field_bytes, sizeof(uint32_t));
-//
-//    buffer_current_pointer += sizeof(uint32_t); // sizeof data_length field
-//
-//    memcpy(buffer_current_pointer, response->data, response->data_length);
-//
-//    buffer_write_adv(buffer, get_sap_response_size(response)); // buffer write pointer update
-//}
+    to_copy = response->v_type;
+    memcpy(buffer_travel,&to_copy,1);
+    buffer_travel += 1;
+
+    to_copy = response->status_code;
+    memcpy(buffer_travel,&to_copy,1);
+    buffer_travel += 1;
+
+    to_copy = htons(response->req_id);
+    memcpy(buffer_travel,&to_copy,sizeof(uint16_t));
+    buffer_travel += sizeof(uint16_t);
+
+    data_type_correspondence data_type_enum =  op_to_resp_data_type(response->op_code);
+    switch (data_type_enum) {
+        case SAP_SINGLE:
+            to_copy = response->data.sap_single;
+            memcpy(buffer_travel, &to_copy, 1);
+            break;
+        case SAP_SHORT:
+            to_copy = htons(response->data.sap_short);
+            memcpy(buffer_travel, &to_copy, sizeof(uint16_t));
+            break;
+        case SAP_LONG:
+            to_copy = htons(response->data.sap_long);
+            memcpy(buffer_travel, &to_copy, sizeof(uint32_t));
+            break;
+        case SAP_STRING:
+            len = strlen(response->data.string);
+            memcpy(buffer_travel, response->data.string, len);
+            break;
+        case SAP_BLANK:
+        default:
+            break;
+
+    }
+
+
+    return buffer;
+}
+
+
 
 void free_sap_request(sap_request *request)
 {
@@ -153,4 +167,53 @@ static data_type_correspondence op_to_req_data_type(op_code op_code){
         default:
             return SAP_BLANK;
     }
+}
+
+static data_type_correspondence op_to_resp_data_type(op_code op_code){
+    switch (op_code) {
+        case OP_GET_TIMEOUT:
+        case OP_IS_FILTER_WORKING:
+        case OP_TOGGLE_FILTER:
+            return SAP_SINGLE;
+        case OP_GET_BUFF_SIZE:
+            return SAP_SHORT;
+        case OP_STATS:
+            return SAP_LONG;
+        case OP_GET_ERROR_FILE:
+        case OP_GET_FILTER:
+            return SAP_STRING;
+        default:
+            return SAP_BLANK;
+    }
+}
+
+static int get_packet_size(packet_type packet_type, op_code op_code, char* data){
+    int size;
+    data_type_correspondence data_type_corr;
+    if (packet_type == SAP_REQ){
+        size = SAP_REQ_HEADER_SIZE;
+        data_type_corr = op_to_req_data_type(op_code);
+    }
+    else{
+        size = SAP_RESP_HEADER_SIZE;
+        data_type_corr = op_to_resp_data_type(op_code);
+    }
+
+    switch (data_type_corr) {
+        case SAP_SINGLE:
+            size+=1;
+            break;
+        case SAP_SHORT:
+            size+=2;
+            break;
+        case SAP_LONG:
+            size+=4;
+        case SAP_STRING:
+            size += data!=NULL?strlen(data):0;
+        case SAP_BLANK:
+        default:
+            size+=0;
+    }
+
+    return size;
 }
