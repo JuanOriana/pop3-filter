@@ -46,7 +46,9 @@ static const command_data all_command_data[] = {
 static void command_init(command_instance * command);
 
 static void handle_command_parsed(command_instance * current_command, command_parser * parser, bool * finished, bool not_match);
-static inline void crlf_state (command_parser * parser, const char c, bool * finished, command_instance * current_command);
+static inline void command_crlf_state (command_parser * parser, const char c, bool * finished, command_instance * current_command);
+static inline void command_error_state (command_parser * parser, const char c, bool * finished, command_instance * current_command);
+static inline void command_args_state (command_parser * parser, const char c, bool * finished, command_instance * current_command);
 
 void command_parser_init(command_parser * parser) {
     parser->state          = COMMAND_TYPE;
@@ -95,7 +97,7 @@ command_state command_parser_feed(command_parser * parser, const char c, bool * 
             break;
 
         case COMMAND_ARGS:
-            if(c == ' ') {
+            /*if(c == ' ') {
                 if(parser->args_size == all_command_data[current_command->type].max_args)
                     parser->state = COMMAND_ERROR;
                 else if(parser->state_size == 0)
@@ -136,29 +138,30 @@ command_state command_parser_feed(command_parser * parser, const char c, bool * 
             } else {
                 parser->crlf_state = 0;
                 parser->state = COMMAND_ERROR;
-            }
+            }*/
+            command_args_state(parser, c, finished, current_command);
             break;
 
         case COMMAND_CRLF:
-            crlf_state(parser, c, finished, current_command);
-            /*log(DEBUG, "EStoy en CRLF");
-            if(c == '\r' && parser->crlf_state == 0) {
+            /*if(c == '\r' && parser->crlf_state == 0) {
                 parser->crlf_state = 1;
             } else if(c == '\n' && parser->crlf_state == 1){
                 handle_command_parsed(current_command, parser, finished, false);
             }else {
                 parser->state = COMMAND_ERROR;
             }*/
+            command_crlf_state(parser, c, finished, current_command);
             break;
 
         case COMMAND_ERROR:
-            if(c == '\r' && parser->crlf_state == 0) {
+            /*if(c == '\r' && parser->crlf_state == 0) {
                 parser->crlf_state = 1;
             } else if(c == '\n'){
                 handle_command_parsed(current_command, parser, finished, true);
             }else{
                 parser->crlf_state = 0;
-            }
+            }*/
+            command_error_state(parser, c, finished, current_command);
             break;
         default:
             log(ERROR,"Command parser not reconize state: %d", parser->state);
@@ -223,15 +226,71 @@ static void handle_command_parsed(command_instance * current_command, command_pa
 }
 
 /**/
-static inline void crlf_state (command_parser * parser, const char c, bool * finished, command_instance * current_command)
+static inline void command_args_state (command_parser * parser, const char c, bool * finished, command_instance * current_command)
 {
-    log(DEBUG, "EStoy en CRLF");
+    if(c == ' ') {
+        if(parser->args_size == all_command_data[current_command->type].max_args)
+            parser->state = COMMAND_ERROR;
+        else if(parser->state_size == 0)
+            parser->state_size++;
+        else if(parser->state_size > 1 && parser->args_size < all_command_data[current_command->type].max_args) {
+            parser->state_size = 1;
+            parser->args_size++;
+        }
+    } else if(c != '\r' && c != '\n') {
+        parser->crlf_state = 0;
+        if(parser->state_size == 0)
+            parser->state = COMMAND_ERROR;
+        else {
+            if(parser->args_size == 0 && (current_command->type == CMD_USER || current_command->type == CMD_APOP))
+                ((uint8_t *)current_command->data)[parser->state_size-1] = c;
+            parser->state_size++;
+        }
+    } else if(c == '\r') {
+        parser->crlf_state = 1;
+        if(parser->args_size == 0 && (current_command->type == CMD_USER || current_command->type == CMD_APOP))
+            ((uint8_t *)current_command->data)[parser->state_size-1] = 0;     //username null terminated
+        if(parser->state_size > 1)
+            parser->args_size++;
+        if(all_command_data[current_command->type].min_args <= parser->args_size && parser->args_size <= all_command_data[current_command->type].max_args) {
+            parser->state     = COMMAND_CRLF;
+        } else
+            parser->state     = COMMAND_ERROR;
+    } else if(c == '\n' && parser->crlf_state == 1) {
+        parser->crlf_state = 2;
+        if(parser->args_size == 0 && (current_command->type == CMD_USER || current_command->type == CMD_APOP))
+            ((uint8_t *)current_command->data)[parser->state_size-1] = 0;     //username null terminated
+        if(parser->state_size > 1)
+            parser->args_size++;
+        if(all_command_data[current_command->type].min_args <= parser->args_size && parser->args_size <= all_command_data[current_command->type].max_args) {
+            handle_command_parsed(current_command, parser, finished, false);
+        } else
+            handle_command_parsed(current_command, parser, finished, true);
+    } else {
+        parser->crlf_state = 0;
+        parser->state = COMMAND_ERROR;
+    }
+}
+
+static inline void command_crlf_state (command_parser * parser, const char c, bool * finished, command_instance * current_command)
+{
     if(c == '\r' && parser->crlf_state == 0) {
         parser->crlf_state = 1;
     } else if(c == '\n' && parser->crlf_state == 1){
         handle_command_parsed(current_command, parser, finished, false);
     }else {
         parser->state = COMMAND_ERROR;
+    }
+}
+
+static inline void command_error_state (command_parser * parser, const char c, bool * finished, command_instance * current_command)
+{
+    if(c == '\r' && parser->crlf_state == 0) {
+        parser->crlf_state = 1;
+    } else if(c == '\n'){
+        handle_command_parsed(current_command, parser, finished, true);
+    }else{
+        parser->crlf_state = 0;
     }
 }
 /**/
