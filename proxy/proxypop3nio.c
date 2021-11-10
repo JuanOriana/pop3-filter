@@ -756,7 +756,12 @@ unsigned on_write_ready_hello(struct selector_key *key){
 }
 
 /////////////////// FUNCIONES DEL FILTER //////////////////////////////////////////////////
-
+static void set_enviroment_variables(connection *connection){
+    
+    setenv("POP3FILTER_VERSION",DEFAULT_PROXY_POP3_VERSION_NUMBER,1);
+    setenv("POP3_USERNAME",connection->session.name,1);
+    setenv("POP3_SERVER",connection->origin_addr_humanized,1);
+}
 
 static void filter_init(struct selector_key * key){
     log(DEBUG,"Starting filter");
@@ -795,7 +800,8 @@ static void filter_init(struct selector_key * key){
         close(filter->read_pipe[0]); 
         close(filter->write_pipe[1]);
 
-        //TODO: Setear variables de entorno
+        set_enviroment_variables(connection); // Seteamos las variables de entorno que algunos filters necesitan
+
         if(execl("/bin/sh","sh","-c",pop3_proxy_args.filter,(char * )0) < 0){
             log(ERROR,"Executing command");
             close(filter->read_pipe[0]);
@@ -1094,7 +1100,7 @@ static fd_interest client_compute_interest(struct selector_key *key)
     connection *connection = ATTACHMENT(key);
     struct copy *copy = &connection->copy_client;
     
-    bool writeFromOrigin = buffer_can_read(copy->write_buffer) && (connection->filter.state == FILTER_START ||connection->filter.state == FILTER_CLOSE); // Todavia no esta el filtro 
+    bool writeFromOrigin = buffer_can_read(copy->write_buffer) && (!connection->filter.state == FILTER_START ||connection->filter.state == FILTER_CLOSE); //TODO: REVISAR ESTO ANTES NO SE NEGABA EL FILTER_START// Todavia no esta el filtro 
 
     bool writeFromFilter = buffer_can_read(connection->copy_filter.read_buffer) && (connection->filter.state == FILTER_WORKING ||connection->filter.state == FILTER_FINISHED_SENDING);
 

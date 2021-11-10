@@ -9,6 +9,8 @@
 #define DEFAULT_PROXY_PORT 1110
 #define DEFAULT_MNG_ADDR "127.0.0.1"
 #define DEFAULT_MNG_PORT 9090
+#define DEFAULT_PROXY_POP3_VERSION_NUMBER "1.0"
+
 
 struct pop3_proxy_args
 {
@@ -19,6 +21,8 @@ struct pop3_proxy_args
     char *mng_addr;
     unsigned short mng_port;
     char *filter;
+    char *version_number;
+
     char *error_file;
 };
 
