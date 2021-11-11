@@ -16,7 +16,7 @@
 #include "./utils/include/buffer.h"
 #include "./utils/include/selector.h"
 #include "./utils/include/netutils.h"
-#include "./admin/include/manager_server.h"
+#include "./manager/include/manager_server.h"
 
 #include <sys/signal.h>
 #include "./utils/include/stm.h"

@@ -1,0 +1,8 @@
+//
+// Created by Juan Pablo Oriana on 11/11/2021.
+//
+
+#ifndef POP3FILTER_MANAGER_CLIENT_H
+#define POP3FILTER_MANAGER_CLIENT_H
+
+#endif //POP3FILTER_MANAGER_CLIENT_H

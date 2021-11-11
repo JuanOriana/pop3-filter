@@ -6,11 +6,14 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include "include/sap.h"
+#include "./include/sap.h"
 #include "../utils/include/logger.h"
 #include "../utils/include/selector.h"
 
 
+
+sap_response response;
+sap_request  request;
 
 void manager_passive_accept(struct selector_key *key)
 {
@@ -27,22 +30,21 @@ void manager_passive_accept(struct selector_key *key)
         log(ERROR, "recvfrom() failed: %s ", strerror(errno));
     }
 
-    sap_request* request = sap_buffer_to_request(buffer_in);
+    sap_buffer_to_request(buffer_in, &request);
 
     log(DEBUG, "Version: %d\nop_code: %d\nauth_id:%d\nreq_id:%d ",
-        request->v_type, request->op_code, request->auth_id, request->req_id);
+        request.v_type, request.op_code, request.auth_id, request.req_id);
 
     sap_data_type data;
     data.string=0;
-    sap_response* response = create_new_sap_response(SAP_V_1_0_0,SC_OK,OP_STATS,
-                                                     request->req_id,data);
-    buffer_out = sap_response_to_buffer(response,&out_len);
+    sap_response* new_response = create_new_sap_response(SAP_V_1_0_0,SC_OK,OP_STATS,
+                                                     request.req_id,data);
+    buffer_out = sap_response_to_buffer(new_response,&out_len);
     // Enviamos respuesta (el sendto no bloquea)
     sendto(key->fd, buffer_out, out_len, 0, (const struct sockaddr *)&client_addr, client_addr_len);
 
     log(DEBUG, "UDP sent:%s", buffer_out);
 
-    free_sap_request(request);
-    free_sap_response(response);
+    free_sap_response(new_response);
     free(buffer_out);
 }

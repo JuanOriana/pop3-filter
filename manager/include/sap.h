@@ -81,8 +81,8 @@ typedef struct sap_response
     sap_data_type data;
 } sap_response;
 
-sap_request * sap_buffer_to_request(char *buffer);
-sap_response * sap_buffer_to_response(char *buffer);
+sap_request * sap_buffer_to_request(char *buffer, sap_request* request);
+sap_response * sap_buffer_to_response(char *buffer, sap_response * response);
 char * sap_response_to_buffer(sap_response * response, int* size);
 char * sap_request_to_buffer(sap_request * response, int* size);
 sap_response * create_new_sap_response(server_version v_type, status_code status_code, op_code op_code,

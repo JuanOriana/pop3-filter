@@ -30,56 +30,46 @@ sap_response * create_new_sap_response(server_version v_type, status_code status
     return new_response_datagram;
 }
 
-sap_request * sap_buffer_to_request(char *buffer)
+sap_request * sap_buffer_to_request(char *buffer, sap_request * request)
 {
-    sap_request * new_request_datagram = calloc(1, sizeof(struct sap_request));
-    if (new_request_datagram == NULL)
-    {
-        return NULL;
-    }
 
     // https://wiki.sei.cmu.edu/confluence/display/c/POS39-C.+Use+the+correct+byte+ordering+when+transferring+data+between+systems ntohl function explanation
-    new_request_datagram->v_type = *((uint8_t *) buffer);
+    request->v_type = *((uint8_t *) buffer);
     buffer += sizeof(uint8_t);
 
-    new_request_datagram->auth_id = ntohl(*((uint32_t *)buffer));
+    request->auth_id = ntohl(*((uint32_t *)buffer));
     buffer += sizeof(uint32_t);
 
-    new_request_datagram->op_code = *((uint8_t *) buffer);
+    request->op_code = *((uint8_t *) buffer);
     buffer += sizeof(uint8_t);
 
-    new_request_datagram->req_id = ntohs(*((uint16_t *)buffer));
+    request->req_id = ntohs(*((uint16_t *)buffer));
     buffer += sizeof(uint16_t);
 
-    assign_proper_data_type(&new_request_datagram->data,op_to_req_data_type(new_request_datagram->op_code), buffer);
+    assign_proper_data_type(&request->data,op_to_req_data_type(request->op_code), buffer);
 
-    return new_request_datagram;
+    return request;
 }
 
-sap_response * sap_buffer_to_response(char *buffer)
+sap_response * sap_buffer_to_response(char *buffer, sap_response * response)
 {
-    sap_response * new_response_datagram = calloc(1, sizeof(struct sap_response));
-    if (new_response_datagram == NULL)
-    {
-        return NULL;
-    }
 
     // https://wiki.sei.cmu.edu/confluence/display/c/POS39-C.+Use+the+correct+byte+ordering+when+transferring+data+between+systems ntohl function explanation
-    new_response_datagram->v_type = *((uint8_t *) buffer);
+    response->v_type = *((uint8_t *) buffer);
     buffer += sizeof(uint8_t);
 
-    new_response_datagram->status_code = *((uint8_t *) buffer);
+    response->status_code = *((uint8_t *) buffer);
     buffer += sizeof(uint8_t);
 
-    new_response_datagram->op_code = *((uint8_t *) buffer);
+    response->op_code = *((uint8_t *) buffer);
     buffer += sizeof(uint8_t);
 
-    new_response_datagram->req_id = ntohs(*((uint16_t *)buffer));
+    response->req_id = ntohs(*((uint16_t *)buffer));
     buffer += sizeof(uint16_t);
 
-    assign_proper_data_type(&new_response_datagram->data,op_to_resp_data_type(new_response_datagram->op_code), buffer);
+    assign_proper_data_type(&response->data,op_to_resp_data_type(response->op_code), buffer);
 
-    return new_response_datagram;
+    return response;
 }
 
 char * sap_request_to_buffer(sap_request * request, int* size){
