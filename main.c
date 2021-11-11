@@ -163,9 +163,9 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (proxy4 >= 0)
+    if (manag4 >= 0)
     {
-        ss = selector_register(selector, proxy4, &manager_passive_handler, OP_READ, NULL);
+        ss = selector_register(selector, manag4, &manager_passive_handler, OP_READ, NULL);
         if (ss != SELECTOR_SUCCESS)
         {
             err_msg = "registering ipv4 manager passive fd";
@@ -173,9 +173,9 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (proxy6 >= 0)
+    if (manag6 >= 0)
     {
-        ss = selector_register(selector, proxy6, &manager_passive_handler, OP_READ, NULL);
+        ss = selector_register(selector, manag6, &manager_passive_handler, OP_READ, NULL);
         if (ss != SELECTOR_SUCCESS)
         {
             err_msg = "registering ipv6 manager passive fd";
@@ -233,6 +233,14 @@ selector_finally:
         close(proxy4);
     }
     if (proxy6 >= 0)
+    {
+        close(proxy6);
+    }
+    if (manag4 >= 0)
+    {
+        close(proxy6);
+    }
+    if (manag6 >= 0)
     {
         close(proxy6);
     }

@@ -8,61 +8,11 @@
 static data_type_correspondence op_to_req_data_type(op_code op_code);
 static data_type_correspondence op_to_resp_data_type(op_code op_code);
 static int get_packet_size(packet_type packet_type, op_code op_code, char* data);
+static void assign_proper_data_type(sap_data_type * data, data_type_correspondence data_type_enum, char* buffer);
+static void copy_data_to_buff(sap_data_type data, data_type_correspondence data_type_enum, char* buffer);
 
-sap_request * sap_buffer_to_request(char *buffer)
-{
-    size_t len;
-
-    sap_request * new_request_datagram = calloc(1, sizeof(struct sap_request));
-    if (new_request_datagram == NULL)
-    {
-        return NULL;
-    }
-
-    // https://wiki.sei.cmu.edu/confluence/display/c/POS39-C.+Use+the+correct+byte+ordering+when+transferring+data+between+systems ntohl function explanation
-    new_request_datagram->v_type = *((uint8_t *) buffer);
-    buffer += sizeof(new_request_datagram->v_type);
-
-    new_request_datagram->auth_id = ntohl(*((uint32_t *)buffer));
-    buffer += sizeof(new_request_datagram->auth_id);
-
-    new_request_datagram->op_code = *((uint8_t *) buffer);
-    buffer += sizeof(new_request_datagram->op_code);
-
-    new_request_datagram->req_id = ntohs(*((uint16_t *)buffer));
-    buffer += sizeof(new_request_datagram->req_id);;
-
-    new_request_datagram->auth_id = ntohl(*((uint32_t *)buffer));
-    buffer+= sizeof(new_request_datagram->auth_id);
-
-    data_type_correspondence data_type_enum =  op_to_req_data_type(new_request_datagram->op_code);
-    switch (data_type_enum) {
-        case SAP_SINGLE:
-            new_request_datagram->data.sap_single = *((uint8_t *) buffer);
-            buffer += sizeof(new_request_datagram->data.sap_single);
-            break;
-        case SAP_SHORT:
-            new_request_datagram->data.sap_short = ntohs(*((uint16_t *)buffer));
-            buffer += sizeof(new_request_datagram->data.sap_short);
-            break;
-        case SAP_LONG:
-            new_request_datagram->data.sap_long = ntohl(*((uint32_t *)buffer));
-            buffer += sizeof(new_request_datagram->data.sap_long);
-            break;
-        case SAP_STRING:
-            len = strlen(buffer);
-            //CHECKEO LEN MAXIMO
-            memcpy(new_request_datagram->data.string, buffer, len);
-            break;
-        case SAP_BLANK:
-            new_request_datagram->data.string = NULL;
-
-    }
-
-    return new_request_datagram;
-}
-
-sap_response * create_new_sap_response(server_version v_type, status_code status_code, uint16_t req_id,sap_data_type data)
+sap_response * create_new_sap_response(server_version v_type, status_code status_code, op_code op_code, uint16_t req_id,
+                                       sap_data_type data)
 {
     sap_response * new_response_datagram = calloc(1, sizeof(struct sap_response));
     if (new_response_datagram == NULL)
@@ -73,56 +23,167 @@ sap_response * create_new_sap_response(server_version v_type, status_code status
     {
         new_response_datagram->v_type = v_type;
         new_response_datagram->status_code = status_code;
+        new_response_datagram->op_code = op_code;
         new_response_datagram->req_id = req_id;
         new_response_datagram->data = data;
     }
     return new_response_datagram;
 }
 
+sap_request * sap_buffer_to_request(char *buffer)
+{
+    sap_request * new_request_datagram = calloc(1, sizeof(struct sap_request));
+    if (new_request_datagram == NULL)
+    {
+        return NULL;
+    }
+
+    // https://wiki.sei.cmu.edu/confluence/display/c/POS39-C.+Use+the+correct+byte+ordering+when+transferring+data+between+systems ntohl function explanation
+    new_request_datagram->v_type = *((uint8_t *) buffer);
+    buffer += sizeof(uint8_t);
+
+    new_request_datagram->auth_id = ntohl(*((uint32_t *)buffer));
+    buffer += sizeof(uint32_t);
+
+    new_request_datagram->op_code = *((uint8_t *) buffer);
+    buffer += sizeof(uint8_t);
+
+    new_request_datagram->req_id = ntohs(*((uint16_t *)buffer));
+    buffer += sizeof(uint16_t);
+
+    assign_proper_data_type(&new_request_datagram->data,op_to_req_data_type(new_request_datagram->op_code), buffer);
+
+    return new_request_datagram;
+}
+
+sap_response * sap_buffer_to_response(char *buffer)
+{
+    sap_response * new_response_datagram = calloc(1, sizeof(struct sap_response));
+    if (new_response_datagram == NULL)
+    {
+        return NULL;
+    }
+
+    // https://wiki.sei.cmu.edu/confluence/display/c/POS39-C.+Use+the+correct+byte+ordering+when+transferring+data+between+systems ntohl function explanation
+    new_response_datagram->v_type = *((uint8_t *) buffer);
+    buffer += sizeof(uint8_t);
+
+    new_response_datagram->status_code = *((uint8_t *) buffer);
+    buffer += sizeof(uint8_t);
+
+    new_response_datagram->op_code = *((uint8_t *) buffer);
+    buffer += sizeof(uint8_t);
+
+    new_response_datagram->req_id = ntohs(*((uint16_t *)buffer));
+    buffer += sizeof(uint16_t);
+
+    assign_proper_data_type(&new_response_datagram->data,op_to_resp_data_type(new_response_datagram->op_code), buffer);
+
+    return new_response_datagram;
+}
+
+char * sap_request_to_buffer(sap_request * request, int* size){
+    int to_copy;
+    *size = get_packet_size(SAP_REQ,request->op_code,request->data.string);
+    char * buffer = calloc(1, *size);
+    char* buffer_travel = buffer;
+
+    to_copy = request->v_type;
+    memcpy(buffer_travel,&to_copy,sizeof(uint8_t));
+    buffer_travel += sizeof(uint8_t);
+
+    to_copy = htonl(request->auth_id);
+    memcpy(buffer_travel,&to_copy,sizeof(uint32_t));
+    buffer_travel += sizeof(uint32_t);
+
+    to_copy = request->op_code;
+    memcpy(buffer_travel,&to_copy,sizeof(uint8_t));
+    buffer_travel += sizeof(uint8_t);
+
+    to_copy = htons(request->req_id);
+    memcpy(buffer_travel,&to_copy,sizeof(uint16_t));
+    buffer_travel += sizeof(uint16_t);
+
+    copy_data_to_buff(request->data, op_to_req_data_type(request->op_code), buffer_travel);
+
+    return buffer;
+}
+
 char * sap_response_to_buffer(sap_response * response, int* size){
-    int len, to_copy;
+    int to_copy;
     *size = get_packet_size(SAP_RESP,response->op_code,response->data.string);
     char * buffer = calloc(1, *size);
     char* buffer_travel = buffer;
 
     to_copy = response->v_type;
-    memcpy(buffer_travel,&to_copy,1);
-    buffer_travel += 1;
+    memcpy(buffer_travel,&to_copy,sizeof(uint8_t));
+    buffer_travel += sizeof(uint8_t);
 
     to_copy = response->status_code;
-    memcpy(buffer_travel,&to_copy,1);
-    buffer_travel += 1;
+    memcpy(buffer_travel,&to_copy,sizeof(uint8_t));
+    buffer_travel += sizeof(uint8_t);
+
+    to_copy = response->op_code;
+    memcpy(buffer_travel,&to_copy,sizeof(uint8_t));
+    buffer_travel += sizeof(uint8_t);
 
     to_copy = htons(response->req_id);
     memcpy(buffer_travel,&to_copy,sizeof(uint16_t));
     buffer_travel += sizeof(uint16_t);
 
-    data_type_correspondence data_type_enum =  op_to_resp_data_type(response->op_code);
+    copy_data_to_buff(response->data, op_to_resp_data_type(response->op_code), buffer_travel);
+
+    return buffer;
+}
+
+static void assign_proper_data_type(sap_data_type * data, data_type_correspondence data_type_enum, char * buffer){
+
+    int len;
     switch (data_type_enum) {
         case SAP_SINGLE:
-            to_copy = response->data.sap_single;
-            memcpy(buffer_travel, &to_copy, 1);
+            data->sap_single = *((uint8_t *) buffer);
             break;
         case SAP_SHORT:
-            to_copy = htons(response->data.sap_short);
-            memcpy(buffer_travel, &to_copy, sizeof(uint16_t));
+            data->sap_short = ntohs(*((uint16_t *)buffer));
             break;
         case SAP_LONG:
-            to_copy = htons(response->data.sap_long);
-            memcpy(buffer_travel, &to_copy, sizeof(uint32_t));
+            data->sap_long = ntohl(*((uint32_t *)buffer));
             break;
         case SAP_STRING:
-            len = strlen(response->data.string);
-            memcpy(buffer_travel, response->data.string, len);
+            len = strlen(buffer);
+            memcpy(data->string, buffer, len);
+            break;
+        case SAP_BLANK:
+            data->string = NULL;
+    }
+}
+
+static void copy_data_to_buff(sap_data_type data, data_type_correspondence data_type_enum, char* buffer){
+
+    int to_copy, len;
+
+    switch (data_type_enum) {
+        case SAP_SINGLE:
+            to_copy = data.sap_single;
+            memcpy(buffer, &to_copy, 1);
+            break;
+        case SAP_SHORT:
+            to_copy = htons(data.sap_short);
+            memcpy(buffer, &to_copy, sizeof(uint16_t));
+            break;
+        case SAP_LONG:
+            to_copy = htons(data.sap_long);
+            memcpy(buffer, &to_copy, sizeof(uint32_t));
+            break;
+        case SAP_STRING:
+            len = strlen(data.string);
+            memcpy(buffer, data.string, len);
             break;
         case SAP_BLANK:
         default:
             break;
     }
-
-    return buffer;
 }
-
 
 
 void free_sap_request(sap_request *request)
@@ -200,13 +261,13 @@ static int get_packet_size(packet_type packet_type, op_code op_code, char* data)
 
     switch (data_type_corr) {
         case SAP_SINGLE:
-            size+=1;
+            size+=sizeof(uint8_t);
             break;
         case SAP_SHORT:
-            size+=2;
+            size+=sizeof(uint16_t);
             break;
         case SAP_LONG:
-            size+=4;
+            size+=sizeof(uint32_t);
         case SAP_STRING:
             size += data!=NULL?strlen(data):0;
         case SAP_BLANK:

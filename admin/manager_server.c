@@ -34,10 +34,11 @@ void manager_passive_accept(struct selector_key *key)
 
     sap_data_type data;
     data.string=0;
-    sap_response* response = create_new_sap_response(SAP_V_1_0_0,SC_OK,request->req_id,data);
+    sap_response* response = create_new_sap_response(SAP_V_1_0_0,SC_OK,OP_STATS,
+                                                     request->req_id,data);
     buffer_out = sap_response_to_buffer(response,&out_len);
     // Enviamos respuesta (el sendto no bloquea)
-    sendto(socket, buffer_out, out_len, 0, (const struct sockaddr *)&client_addr, client_addr_len);
+    sendto(key->fd, buffer_out, out_len, 0, (const struct sockaddr *)&client_addr, client_addr_len);
 
     log(DEBUG, "UDP sent:%s", buffer_out);
 
