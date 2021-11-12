@@ -4,3 +4,5 @@ main
 *.dYSM/*
 .idea
 *.o
+client
+./manager_client/client.dYSM/*
