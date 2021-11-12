@@ -435,7 +435,13 @@ static unsigned start_connection_with_origin(fd_selector selector, connection *c
     return CONNECTING;
 
 connectionfinally:
-    connection->dns_resolution_current_iter = connection->dns_resolution_current_iter->ai_next;
+    if(connection->dns_resolution_current_iter == NULL){
+        log(ERROR,"VER QUE ERROR SERIA ESTE");
+    }else{
+        // TODO: AL HACER ESTO TIRA UN SEG FAULT
+         connection->dns_resolution_current_iter = connection->dns_resolution_current_iter->ai_next;
+    }
+
     // This only makes sense if it's the last iteration (drowning the selector)
     if (connection->dns_resolution_current_iter == NULL) {
         log(ERROR, "Cant connect to origin server.");
@@ -516,8 +522,8 @@ static void proxy_time_out(struct selector_key *key){
         // connection_destroy(ATTACHMENT(key)); /// TODO: ARREGLAR EL PROXY_DESTROY
         selector_unregister_fd(key->s,connection->origin_fd);
         selector_unregister_fd(key->s,connection->client_fd);
-        close(connection->client_fd);
-        close(connection->origin_fd);
+//        close(connection->client_fd);
+//        close(connection->origin_fd);
     }
 }
 
@@ -613,6 +619,8 @@ static unsigned dns_resolve_done(struct selector_key *key)
 static void connection_destroy(connection *connection)
 {
     // CLOSE SOCKETS? 
+    close(connection->origin_fd);
+    close(connection->client_fd);
     // TODO: Ver si metemos el destroy filter aca
     log(DEBUG,"Closing connection");
     free(connection->read_buffer->data);
