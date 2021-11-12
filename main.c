@@ -23,7 +23,7 @@
 #include "./include/main.h"
 #include "proxy/include/proxypop3nio.h"
 
-struct pop3_proxy_args pop3_proxy_args;
+extern struct pop3_proxy_args pop3_proxy_args;
 
 #define MAX_PENDING_CONNECTIONS 20
 #define SELECTOR_SIZE 1024

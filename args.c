@@ -6,6 +6,9 @@
 #include <getopt.h>
 #include "./include/args.h"
 
+struct pop3_proxy_args pop3_proxy_args;
+
+
 static unsigned short
 port(const char *s)
 {

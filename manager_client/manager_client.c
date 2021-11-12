@@ -19,6 +19,7 @@
 #endif
 
 extern struct pop3_proxy_args pop3_proxy_args;
+
 sap_response response;
 sap_request  request;
 
