@@ -1270,12 +1270,14 @@ static unsigned write_to_filter(struct selector_key *key,struct copy *copy){
     
     bool error = false;
 
+    uint8_t *ptr = buffer_read_ptr(src, &max_size_to_write);
+     ret_value = analize_process_response(connection,src,false,true);
+    filter_parser_state state = filter_parser_consume(&connection->filter_skip_parser,src,dest,true,&error);
 
-    filter_state state = filter_parser_consume(&connection->filter_skip_parser,src,dest,true,&error);
-    ret_value = analize_process_response(connection,dest,false,true);
+   
     bool aux = buffer_can_read(src);
-    uint8_t *ptr = buffer_read_ptr(dest, &max_size_to_write);
-    sended = write(key->fd, ptr, max_size_to_write);
+    uint8_t *ptr_dest = buffer_read_ptr(dest, &max_size_to_write);
+    sended = write(key->fd, ptr_dest, max_size_to_write);
 
     if(sended<0){
         connection->filter.state = FILTER_FINISHED_SENDING;
@@ -1285,7 +1287,7 @@ static unsigned write_to_filter(struct selector_key *key,struct copy *copy){
 
         /// TODO ANALIZAR que quedo en el buffer
     }else{
-        // buffer_read_adv(buffer,sended);
+        // buffer_read_adv(src,sended);
         if(connection->command_response_parser.state == RESPONSE_INIT && !buffer_can_read(src)){
             connection->filter.state = FILTER_FINISHED_SENDING;
         }
