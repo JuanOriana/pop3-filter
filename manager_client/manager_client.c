@@ -27,7 +27,7 @@ uint16_t req_id;
 
 #define COMMAND_TOTAL_COUNT 11
 
-typedef enum client_commands{
+typedef enum client_command_enum{
     C_CM_HISTORIC,
     C_CM_CURRENT,
     C_CM_TRANSFER,
@@ -39,26 +39,47 @@ typedef enum client_commands{
     C_CM_GET_ERROR,
     C_CM_GET_FILTER,
     C_CM_SET_FILTER,
-} client_commands;
+} client_command_enum;
+
+typedef int (*handler_fun_type) ( sap_request *, char *);
+
+typedef struct client_command_t{
+    char * name;
+    handler_fun_type handler;
+    char * success_message;
+}client_command_t;
+
+
 
 void build_blank_request(sap_request * new_request, op_code op_code);
 void build_single_request(sap_request * new_request,op_code op_code,uint8_t single_data);
 void build_short_request(sap_request * new_request,op_code op_code,uint16_t short_data);
 void build_long_request(sap_request * new_request,op_code op_code,uint16_t long_data);
-void historic_connections_req(sap_request *,uint8_t, u_int16_t, uint32_t, char *);
-void current_connections_req(sap_request *,uint8_t, u_int16_t, uint32_t, char *);
-void transfered_bytes_req(sap_request *,uint8_t, u_int16_t, uint32_t, char *);
-void get_buff_size_req(sap_request *,uint8_t, u_int16_t, uint32_t, char *);
-void set_buff_size_req(sap_request *,uint8_t, u_int16_t, uint32_t, char *);
-void get_timeout_req(sap_request *,uint8_t, u_int16_t, uint32_t, char *);
-void set_timeout_req(sap_request *,uint8_t, u_int16_t, uint32_t, char *);
-void get_error_req(sap_request *,uint8_t, u_int16_t, uint32_t, char *);
-void set_error_req(sap_request *,uint8_t, u_int16_t, uint32_t, char *);
-void get_filter_req(sap_request *,uint8_t, u_int16_t, uint32_t, char *);
-void set_filter_req(sap_request *,uint8_t, u_int16_t, uint32_t, char *);
+int historic_connections_req(sap_request * new_request, char * param);
+int current_connections_req(sap_request * new_request, char * param);
+int transfered_bytes_req(sap_request * new_request, char * param);
+int get_buff_size_req(sap_request * new_request, char * param);
+int set_buff_size_req(sap_request * new_request, char * param);
+int get_timeout_req(sap_request * new_request, char * param);
+int set_timeout_req(sap_request * new_request, char * param);
+int get_error_req(sap_request * new_request, char * param);
+int set_error_req(sap_request * new_request, char * param);
+int get_filter_req(sap_request * new_request, char * param);
+int set_filter_req(sap_request * new_request, char * param);
 
-
-typedef void (*handler_fun_type) (sap_request *,uint8_t,u_int16_t, uint32_t, char *);
+client_command_t client_commands[] = {
+        {.name="historic", .handler = historic_connections_req, .success_message="La cantidad de conexiones historicas es: "},
+        {.name="current", .handler = current_connections_req, .success_message="La cantidad de conexiones actuales es: "},
+        {.name="bytes", .handler = transfered_bytes_req, .success_message="La cantidad de bytes transferidos es: "},
+        {.name="getbuff", .handler = get_buff_size_req, .success_message="El tamaño del buffer es: "},
+        {.name="setbuff", .handler = set_buff_size_req, .success_message="Tamaño del buffer actualizado correctamente"},
+        {.name="gettimeout", .handler = get_timeout_req, .success_message="El timeout es: "},
+        {.name="settimeout", .handler = set_timeout_req, .success_message="Timeout actualizado correctamente"},
+        {.name="geterror", .handler = get_error_req, .success_message="La salida de error en filter es: "},
+        {.name="seterror", .handler = get_error_req, .success_message="La salida de error en filter fue actualizada "},
+        {.name="getfilter", .handler = get_filter_req, .success_message="El filtro utlizado es:  "},
+        {.name="setfilter", .handler = set_filter_req, .success_message="Filtro actualizado correctamente"}
+};
 
 handler_fun_type handlers[] = {historic_connections_req, current_connections_req, transfered_bytes_req,
                                get_buff_size_req, set_buff_size_req, get_timeout_req, set_timeout_req,
@@ -151,59 +172,65 @@ void build_string_request(sap_request * new_request,op_code op_code, char* strin
     memcpy(new_request->data.string,string,len);
 }
 
-void historic_connections_req(sap_request * new_request,uint8_t single_data,
-                              u_int16_t short_data, uint32_t long_data, char * string_data){
-    build_single_request(new_request,0,0);
+int historic_connections_req(sap_request * new_request, char * param){
+    build_single_request(new_request,OP_STATS,0);
+    return 0;
 }
 
-void current_connections_req(sap_request * new_request,uint8_t single_data,
-                             u_int16_t short_data, uint32_t long_data, char * string_data){
-    build_single_request(new_request,0,1);
+int current_connections_req(sap_request * new_request, char * param){
+    build_single_request(new_request,OP_STATS,1);
+    return 0;
 }
 
-void transfered_bytes_req(sap_request * new_request,uint8_t single_data,
-                          u_int16_t short_data, uint32_t long_data, char * string_data){
-    build_single_request(new_request,0,2);
+int transfered_bytes_req(sap_request * new_request, char * param){
+    build_single_request(new_request,OP_STATS,2);
+    return 0;
 }
 
-void get_buff_size_req(sap_request * new_request,uint8_t single_data,
-                       u_int16_t short_data, uint32_t long_data, char * string_data){
-    build_blank_request(new_request,1);
+int get_buff_size_req(sap_request * new_request, char * param){
+    build_blank_request(new_request,OP_GET_BUFF_SIZE);
+    return 0;
 }
 
-void set_buff_size_req(sap_request * new_request,uint8_t single_data,
-                       u_int16_t short_data, uint32_t long_data, char * string_data){
-    build_short_request(new_request,2,short_data);
+int set_buff_size_req(sap_request * new_request, char * param){
+    int short_data = atoi(param);
+    if (short_data < 0 || short_data > UINT16_MAX )
+        return -1;
+    build_short_request(new_request,OP_SET_BUFF_SIZE,(uint16_t )short_data);
+    return 0;
 }
 
-void get_timeout_req(sap_request * new_request,uint8_t single_data,
-                     u_int16_t short_data, uint32_t long_data, char * string_data){
-    build_blank_request(new_request,3);
+int get_timeout_req(sap_request * new_request, char * param){
+    build_blank_request(new_request,OP_GET_TIMEOUT);
+    return 0;
 }
 
-void set_timeout_req(sap_request * new_request,uint8_t single_data,
-                     u_int16_t short_data, uint32_t long_data, char * string_data){
-    build_single_request(new_request,4,single_data);
+int set_timeout_req(sap_request * new_request, char * param){
+    int single_data = atoi(param);
+    if (single_data < 0 || single_data > UINT8_MAX )
+        return -1;
+    build_single_request(new_request,OP_SET_TIMEOUT,(uint8_t)single_data);
+    return 0;
 }
 
-void get_error_req(sap_request * new_request,uint8_t single_data, u_int16_t short_data,
-                   uint32_t long_data, char * string_data){
-    build_blank_request(new_request,5);
+int get_error_req(sap_request * new_request, char * param){
+    build_blank_request(new_request,OP_GET_ERROR_FILE);
+    return 0;
 }
 
-void set_error_req(sap_request * new_request,uint8_t single_data, u_int16_t short_data,
-                   uint32_t long_data, char * string_data){
-    build_string_request(new_request,6,string_data,strlen(string_data));
+int set_error_req(sap_request * new_request, char * param){
+    build_string_request(new_request,OP_SET_ERROR_FILE,param,strlen(param));
+    return 0;
 }
 
-void get_filter_req(sap_request * new_request,uint8_t single_data, u_int16_t short_data,
-                    uint32_t long_data, char * string_data){
-    build_blank_request(new_request,7);
+int get_filter_req(sap_request * new_request, char * param){
+    build_blank_request(new_request,OP_GET_FILTER);
+    return 0;
 }
 
-void set_filter_req(sap_request * new_request,uint8_t single_data, u_int16_t short_data,
-                    uint32_t long_data, char * string_data){
-    build_string_request(new_request,8,string_data, strlen(string_data));
+int set_filter_req(sap_request * new_request, char * param){
+    build_string_request(new_request,OP_SET_FILTER,param, strlen(param));
+    return 0;
 }
 
 void handle_response(sap_response new_response, char * prev_message){
@@ -229,5 +256,6 @@ void handle_response(sap_response new_response, char * prev_message){
             printf("%s",prev_message);
             break;
     }
+    printf("\n");
 
 }
