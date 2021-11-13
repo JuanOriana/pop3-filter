@@ -326,16 +326,16 @@ void handle_response(sap_response new_response, char * prev_message){
 
 void help(){
     printf("\nAqui la lista de comandos habilitados para el manejo de SAP, van todos en minuscula\n"
-           "help - Devuelve la lista de comandos disponibles.\n"
-           "historic - Devuelve la cantidad de conexiones historicas.\n"
-           "current - Devuelve la cantidad de conexiones actuales.\n"
-           "bytes - Devuelve la cantidad de bytes transferidos.\n"
-           "getbuff - Devuelve el tamaño del buffer utilizado.\n"
-           "setbuff <buffsize> - Cambia el tamaño del buffer utilizado.\n"
-           "gettimeout - Devuelve el timeout del buffer utilizado.\n"
-           "settimeout <timeout> - Cambia el timeout utilizado.\n"
-           "geterror - Devuelve el file hacia donde se redirige el error.\n"
-           "seterror <errfile> - Cambia el file hacia donde se redirige el error.\n"
-           "getfilter - Devuelve el filtro que usa el transform.\n"
-           "setfilter <filter> - Cambia el filtro que usa el transform.\n\n");
+           "\thelp - Devuelve la lista de comandos disponibles.\n"
+           "\thistoric - Devuelve la cantidad de conexiones historicas.\n"
+           "\tcurrent - Devuelve la cantidad de conexiones actuales.\n"
+           "\tbytes - Devuelve la cantidad de bytes transferidos.\n"
+           "\tgetbuff - Devuelve el tamaño del buffer utilizado.\n"
+           "\tsetbuff <buffsize> - Cambia el tamaño del buffer utilizado.\n"
+           "\tgettimeout - Devuelve el timeout del buffer utilizado.\n"
+           "\tsettimeout <timeout> - Cambia el timeout utilizado.\n"
+           "\tgeterror - Devuelve el file hacia donde se redirige el error.\n"
+           "\tseterror <errfile> - Cambia el file hacia donde se redirige el error.\n"
+           "\tgetfilter - Devuelve el filtro que usa el transform.\n"
+           "\tsetfilter <filter> - Cambia el filtro que usa el transform.\n\n");
 }
