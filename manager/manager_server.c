@@ -19,10 +19,12 @@ void manager_passive_accept(struct selector_key *key)
 {
     struct sockaddr_storage client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
-    char buffer_in[1024], *buffer_out;
+    char buffer_in[1024], buffer_out[1024];
     int out_len = 0;
-    //Limpiamos buffer
+    //Limpiamos buffers
     memset(buffer_in, 0, 1024);
+    memset(buffer_out, 0, 1024);
+
 
     ssize_t n = recvfrom(key->fd, buffer_in, 1024, 0, (struct sockaddr *)&client_addr, &client_addr_len);
     if (n <= 0)
@@ -30,21 +32,28 @@ void manager_passive_accept(struct selector_key *key)
         log(ERROR, "recvfrom() failed: %s ", strerror(errno));
     }
 
-    sap_buffer_to_request(buffer_in, &request);
+    if (sap_buffer_to_request(buffer_in, &request) < 0){
+        log(ERROR,"Error converting buffer to request");
+    }
 
     log(DEBUG, "Version: %d\nop_code: %d\nauth_id:%d\nreq_id:%d ",
         request.v_type, request.op_code, request.auth_id, request.req_id);
 
-    sap_data_type data;
-    data.string=0;
-    sap_response* new_response = create_new_sap_response(SAP_V_1_0_0,SC_OK,OP_STATS,
-                                                     request.req_id,data);
-    buffer_out = sap_response_to_buffer(new_response,&out_len);
+
+    response.op_code = request.op_code;
+    response.v_type = SAP_V_1_0_0;
+    response.req_id = request.req_id;
+    response.status_code = SC_OK;
+    memcpy(response.data.string,"hola",5);
+
+
+    if (sap_response_to_buffer(buffer_out,&response,&out_len) < 0) {
+        log(ERROR, "Error converting response to buffer");
+    }
+
     // Enviamos respuesta (el sendto no bloquea)
     sendto(key->fd, buffer_out, out_len, 0, (const struct sockaddr *)&client_addr, client_addr_len);
 
     log(DEBUG, "UDP sent:%s", buffer_out);
 
-    free_sap_response(new_response);
-    free(buffer_out);
 }

@@ -8,6 +8,7 @@
 
 #define SAP_REQ_HEADER_SIZE 8
 #define SAP_RESP_HEADER_SIZE 5
+#define MAX_UDP_SIZE 65507
 
 typedef enum packet_type{
     SAP_REQ,
@@ -58,7 +59,7 @@ typedef union sap_data_type
     uint8_t sap_single;
     uint16_t sap_short;
     uint32_t sap_long;
-    char * string;
+    char string[MAX_UDP_SIZE - SAP_REQ_HEADER_SIZE];
 
 }sap_data_type;
 
@@ -75,22 +76,22 @@ typedef struct sap_response
 {
     server_version v_type;
     status_code status_code;
-    // Op code its responding to. Allows for easier size and type calcs.
+    // Op code it's responding to. Allows for easier size and type calcs.
     op_code op_code;
     uint16_t req_id;
     sap_data_type data;
 } sap_response;
 
-sap_request * sap_buffer_to_request(char *buffer, sap_request* request);
-sap_response * sap_buffer_to_response(char *buffer, sap_response * response);
-char * sap_response_to_buffer(sap_response * response, int* size);
-char * sap_request_to_buffer(sap_request * response, int* size);
-sap_response * create_new_sap_response(server_version v_type, status_code status_code, op_code op_code,
-                                       uint16_t req_id,sap_data_type data);
-//void prepare_sap_response(buffer *buffer, sap_response *response);
+int sap_buffer_to_request(char *buffer, sap_request* request);
+int sap_buffer_to_response(char *buffer, sap_response * response);
+int sap_request_to_buffer(char* buffer, sap_request * response, int* size);
+int sap_response_to_buffer(char* buffer, sap_response * response, int* size);
 
 void free_sap_request(sap_request *request);
 void free_sap_response(sap_response *response);
+
+data_type_correspondence op_to_req_data_type(op_code op_code);
+data_type_correspondence op_to_resp_data_type(op_code op_code);
 
 char* sap_error(status_code status_code);
 
