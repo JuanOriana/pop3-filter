@@ -18,16 +18,11 @@ void filter_parser_init(filter_parser * parser){
     parser->state_size = 0;
 }
 
-int filter_parser_is_done(const filter_parser_state state, bool * errrored){
-    bool ret = true;
+int filter_parser_is_done(const filter_parser_state state){
+    bool ret = false;
 
     switch (state)
     {
-    case FILTER_ERROR:
-        if(errrored != 0){
-            *errrored = true;
-        }
-        break;
     case FILTER_DONE:
         ret = true;
         break;
@@ -100,6 +95,7 @@ filter_parser_state filter_parser_feed(filter_parser * parser, const uint8_t c, 
             break;
 
         case FILTER_DONE:
+            break;
         case FILTER_ERROR:
             // nada que hacer, nos quedamos en este estado
             break;
@@ -111,19 +107,19 @@ filter_parser_state filter_parser_feed(filter_parser * parser, const uint8_t c, 
     return parser->state;
 }
 
-filter_parser_state filter_parser_consume(filter_parser * parser, buffer * src, buffer * dest, bool skip, bool * errored) {
+filter_parser_state filter_parser_consume(filter_parser * parser, buffer * src, buffer * dest, bool skip) {
     filter_parser_state state = parser->state;
-    *errored = false;
     size_t size;
     uint8_t *ptr = buffer_write_ptr(dest, &size);
 
     while(buffer_can_read(src) && size >= 2) {
         const uint8_t c = buffer_read(src);
         state = filter_parser_feed(parser, c, dest, skip);
-        if(filter_parser_is_done(state, errored)) {
+        if(filter_parser_is_done(state)) {
             break;
         } else
             buffer_write_ptr(dest, &size);
     }
+
     return state;
 }

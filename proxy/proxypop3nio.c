@@ -121,6 +121,7 @@ typedef struct connection
     command_response_parser command_response_parser;
     filter_parser filter_add_parser;
     filter_parser filter_skip_parser;
+    bool flag;
 
     command_instance * current_command;
     bool is_awaiting_response_from_origin;
@@ -1064,20 +1065,28 @@ unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
     errno=0;
     readed = read(key->fd, ptr, max_size_to_read);
 
-    bool error =false;
-    
-    
+
+    filter_parser_state state;
        
     if (readed > 0)
     {
+        connection->flag=true;
         buffer_write_adv(dest, readed);
-        filter_parser_state state = filter_parser_consume(&connection->filter_add_parser,dest,src,false,&error);
+        state = filter_parser_consume(&connection->filter_add_parser,dest,src,false);
 
     }
     else if( readed ==0)
     {
+        if(connection->flag){
+        char * termination_msg      = ".\r\n";
+        for(int i=0;i<3;i++){
+            buffer_write(src,termination_msg[i]);
+        }
+        connection->flag = false;
+        }else{
         filter_close(key);
         analize_process_response(connection,connection->write_buffer,false,true);
+        }
     }else{
         log(ERROR,"Error when reading from filter. Error = %s",strerror(errno));
     }
@@ -1280,12 +1289,11 @@ static unsigned write_to_filter(struct selector_key *key,struct copy *copy){
     buffer *dest;
     dest = malloc(sizeof(buffer));
     buffer_init(dest, BUFFSIZE, dest_buffer); // Errores?
-    
-    bool error = false;
+   
 
     uint8_t *ptr = buffer_read_ptr(src, &max_size_to_write);
      ret_value = analize_process_response(connection,src,false,true);
-    filter_parser_state state = filter_parser_consume(&connection->filter_skip_parser,src,dest,true,&error);
+    filter_parser_state state = filter_parser_consume(&connection->filter_skip_parser,src,dest,true);
 
    
     bool aux = buffer_can_read(src);
