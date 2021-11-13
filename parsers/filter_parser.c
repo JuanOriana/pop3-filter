@@ -14,6 +14,7 @@ static const char * crlfMsg = "\r\n.\r\n";
 
 void filter_parser_init(filter_parser * parser){
     parser->state = FILTER_MSG;
+    parser->first_time = true;
     parser->line_size = 0;
     parser->state_size = 0;
 }
@@ -107,10 +108,34 @@ filter_parser_state filter_parser_feed(filter_parser * parser, const uint8_t c, 
     return parser->state;
 }
 
-filter_parser_state filter_parser_consume(filter_parser * parser, buffer * src, buffer * dest, bool skip) {
+filter_parser_state filter_parser_consume(filter_parser * parser, buffer * src, buffer * dest, bool skip,char * start_message) {
     filter_parser_state state = parser->state;
     size_t size;
-    uint8_t *ptr = buffer_write_ptr(dest, &size);
+    buffer_write_ptr(dest, &size);
+
+    ////// TODO ESTO ES PARA SACAR Y GUARDAR LA PRMIMER LINEA con el +OK xx octects
+    if(parser->first_time && skip){
+        uint8_t c;
+        int i =0;
+        while(buffer_can_read(src) && (c=buffer_read(src)) !='\r'){
+            start_message[i++] = c;
+        }
+        start_message[i++] = c;
+         if((c=buffer_read(src)) == '\n' ){
+            start_message[i++] = c;
+        }
+        parser->first_time = false;
+        start_message[i]=0;
+    }
+
+        if(parser->first_time && !skip){
+        int i =0;
+        while(buffer_can_write(dest) && i < strlen(start_message)){
+            buffer_write(dest,start_message[i++]);
+        }
+        parser->first_time = false;
+    }  
+    ///////////////  
 
     while(buffer_can_read(src) && size >= 2) {
         const uint8_t c = buffer_read(src);

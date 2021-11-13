@@ -30,6 +30,7 @@
 #define BUFFSIZE 2048
 #define ADDR_STRING_BUFF_SIZE 64
 #define MAX_POOL 50
+#define START_MESSAGE_SIZE 30
 
 //Patch for MacOS
 #ifndef MSG_NOSIGNAL
@@ -86,6 +87,7 @@ typedef enum
 struct filter_data{
     int     write_pipe[2];
     int     read_pipe[2];
+    char * start_message;
     pid_t   slave_proc_pid;
     filter_state state;
 };
@@ -108,6 +110,7 @@ typedef struct connection
     buffer *read_buffer;
     buffer *write_buffer;
     buffer *filter_buffer;
+    buffer *filter_parser_buffer; // Buffer auxiliar que se utiliza para almcenar el resultado de parsear para o del filtro
 
     struct hello_struct hello_client;
     struct copy copy_client;
@@ -121,7 +124,6 @@ typedef struct connection
     command_response_parser command_response_parser;
     filter_parser filter_add_parser;
     filter_parser filter_skip_parser;
-    bool flag;
 
     command_instance * current_command;
     bool is_awaiting_response_from_origin;
@@ -339,8 +341,8 @@ struct connection *new_connection(int client_fd, address_representation origin_a
 {
     connection *new_connection;
 
-    buffer *read_buf, *write_buf,*filter_buf;
-    uint8_t *direct_buff, *direct_buff_origin,*direct_buff_filter;
+    buffer *read_buf, *write_buf,*filter_buf,*filter_parser_buffer;
+    uint8_t *direct_buff, *direct_buff_origin,*direct_buff_filter,*direct_filter_parser_buffer;
 
     // Verifico si es el primero
     if (connection_pool == NULL)
@@ -353,12 +355,15 @@ struct connection *new_connection(int client_fd, address_representation origin_a
         direct_buff = malloc(BUFFSIZE);
         direct_buff_filter = malloc(BUFFSIZE);
         direct_buff_origin = malloc(BUFFSIZE);
+        direct_filter_parser_buffer = malloc(BUFFSIZE);
         read_buf = malloc(sizeof(buffer));
-        buffer_init(read_buf, BUFFSIZE, direct_buff); // Errores?
+        buffer_init(read_buf, BUFFSIZE, direct_buff);
         write_buf = malloc(sizeof(buffer));
         buffer_init(write_buf, BUFFSIZE, direct_buff_origin); // Errores?
         filter_buf = malloc(sizeof(buffer));
         buffer_init(filter_buf, BUFFSIZE, direct_buff_filter); // Errores?
+        filter_parser_buffer = malloc(sizeof(buffer));
+        buffer_init(filter_parser_buffer, BUFFSIZE, direct_filter_parser_buffer); 
     }
     else
     {
@@ -377,6 +382,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     new_connection->read_buffer = read_buf;
     new_connection->write_buffer = write_buf;
     new_connection->filter_buffer = filter_buf;
+    new_connection ->filter_parser_buffer = filter_parser_buffer;
     new_connection->origin_address_representation = origin_address_representation;
     new_connection->next = NULL;
     new_connection->references = 1;
@@ -828,6 +834,8 @@ static void filter_init(struct selector_key * key){
         close(filter->read_pipe[0]);
         filter->read_pipe[0] = -1;
 
+        filter->start_message = malloc(sizeof(char) * START_MESSAGE_SIZE);
+
 
         filter_parser_init(&connection->filter_add_parser);
         filter_parser_init(&connection->filter_skip_parser);
@@ -1041,6 +1049,7 @@ static void filter_close(struct selector_key *key){
             close(filter->write_pipe[i]);
         }
     }
+    free(filter->start_message);
     memset(filter,0,sizeof(struct filter_data));
     connection->filter.slave_proc_pid = -1;
     connection->filter.state = FILTER_CLOSE;
@@ -1049,19 +1058,15 @@ static void filter_close(struct selector_key *key){
 unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
     size_t max_size_to_read;
     ssize_t readed;
-    buffer *src = copy->read_buffer;
+    buffer *dest = copy->read_buffer;
     unsigned ret_value = COPYING;
     connection *connection = ATTACHMENT(key);
 
 
-    uint8_t *dest_buffer = malloc(BUFFSIZE);
-    buffer *dest;
-    dest = malloc(sizeof(buffer));
-    buffer_init(dest, BUFFSIZE, dest_buffer); // Errores?
-
-
-
-    uint8_t *ptr = buffer_write_ptr(dest, &max_size_to_read);
+    buffer *src = connection->filter_parser_buffer;
+    buffer_reset(src); // Limpiamos el buffer ya que solo se usa como estructura auxiliar
+    // Leo lo que mando el filter con el buffer auxiliar asi mando la respuesta parseada al cliente
+    uint8_t *ptr = buffer_write_ptr(src, &max_size_to_read);
     errno=0;
     readed = read(key->fd, ptr, max_size_to_read);
 
@@ -1070,19 +1075,19 @@ unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
        
     if (readed > 0)
     {
-        connection->flag=true;
-        buffer_write_adv(dest, readed);
-        state = filter_parser_consume(&connection->filter_add_parser,dest,src,false);
+        buffer_write_adv(src, readed);
+        // Copio la respuesta parseada al buffer del cliente
+        state = filter_parser_consume(&connection->filter_add_parser,src,dest,false,connection->filter.start_message);
 
     }
     else if( readed ==0)
     {
-        if(connection->flag){
+        if(connection->filter_add_parser.state == FILTER_MSG){
         char * termination_msg      = ".\r\n";
         for(int i=0;i<3;i++){
-            buffer_write(src,termination_msg[i]);
+            buffer_write(dest,termination_msg[i]);
         }
-        connection->flag = false;
+        connection->filter_add_parser.state = FILTER_DONE;
         }else{
         filter_close(key);
         analize_process_response(connection,connection->write_buffer,false,true);
@@ -1285,18 +1290,16 @@ static unsigned write_to_filter(struct selector_key *key,struct copy *copy){
     connection *connection = ATTACHMENT(key);
     buffer *src = copy->write_buffer;
 
-    uint8_t *dest_buffer = malloc(BUFFSIZE);
-    buffer *dest;
-    dest = malloc(sizeof(buffer));
-    buffer_init(dest, BUFFSIZE, dest_buffer); // Errores?
+    buffer *dest = connection->filter_parser_buffer;
+    buffer_reset(dest); // Limpio lo que habia en este buffer ya que es solo auxiliar, no me interesa que hay
    
+    // Primero dejo que el parser de response analice la respuesta
+    ret_value = analize_process_response(connection,src,false,true);
 
-    uint8_t *ptr = buffer_read_ptr(src, &max_size_to_write);
-     ret_value = analize_process_response(connection,src,false,true);
-    filter_parser_state state = filter_parser_consume(&connection->filter_skip_parser,src,dest,true);
+    // Filtro y limpio la respuesta para mandar sin configuracion de pop3 al filter
+    filter_parser_state state = filter_parser_consume(&connection->filter_skip_parser,src,dest,true,connection->filter.start_message);
 
-   
-    bool aux = buffer_can_read(src);
+    // Le mando al filter el resultado de limpiar la respuesta
     uint8_t *ptr_dest = buffer_read_ptr(dest, &max_size_to_write);
     sended = write(key->fd, ptr_dest, max_size_to_write);
 
@@ -1308,7 +1311,7 @@ static unsigned write_to_filter(struct selector_key *key,struct copy *copy){
 
         /// TODO ANALIZAR que quedo en el buffer
     }else{
-        // buffer_read_adv(src,sended);
+        // No hace falta avanzar el buffer.
         if(connection->command_response_parser.state == RESPONSE_INIT && !buffer_can_read(src)){
             connection->filter.state = FILTER_FINISHED_SENDING;
         }
