@@ -71,16 +71,16 @@ int set_filter_req(sap_request * new_request, char * param);
 void handle_response(sap_response new_response, char * prev_message);
 
 client_command_t client_commands[] = {
-        {.name="historic", .handler = historic_connections_req, .success_message="La cantidad de conexiones historicas es: "},
-        {.name="current", .handler = current_connections_req, .success_message="La cantidad de conexiones actuales es: "},
-        {.name="bytes", .handler = transfered_bytes_req, .success_message="La cantidad de bytes transferidos es: "},
-        {.name="getbuff", .handler = get_buff_size_req, .success_message="El tamaño del buffer es: "},
+        {.name="historic", .handler = historic_connections_req, .success_message="La cantidad de conexiones historicas es:"},
+        {.name="current", .handler = current_connections_req, .success_message="La cantidad de conexiones actuales es:"},
+        {.name="bytes", .handler = transfered_bytes_req, .success_message="La cantidad de bytes transferidos es:"},
+        {.name="getbuff", .handler = get_buff_size_req, .success_message="El tamaño del buffer es:"},
         {.name="setbuff", .handler = set_buff_size_req, .success_message="Tamaño del buffer actualizado correctamente"},
-        {.name="gettimeout", .handler = get_timeout_req, .success_message="El timeout es: "},
+        {.name="gettimeout", .handler = get_timeout_req, .success_message="El timeout es:"},
         {.name="settimeout", .handler = set_timeout_req, .success_message="Timeout actualizado correctamente"},
-        {.name="geterror", .handler = get_error_req, .success_message="La salida de error en filter es: "},
-        {.name="seterror", .handler = get_error_req, .success_message="La salida de error en filter fue actualizada "},
-        {.name="getfilter", .handler = get_filter_req, .success_message="El filtro utlizado es:  "},
+        {.name="geterror", .handler = get_error_req, .success_message="La salida de error en filter es:"},
+        {.name="seterror", .handler = get_error_req, .success_message="La salida de error en filter fue actualizada"},
+        {.name="getfilter", .handler = get_filter_req, .success_message="El filtro utlizado es:"},
         {.name="setfilter", .handler = set_filter_req, .success_message="Filtro actualizado correctamente"}
 };
 
@@ -299,7 +299,8 @@ int set_filter_req(sap_request * new_request, char * param){
 
 void handle_response(sap_response new_response, char * prev_message){
     if (new_response.status_code != 0){
-        printf("Error! %s", sap_error(new_response.status_code));
+        printf("Error! %s\n", sap_error(new_response.status_code));
+        return;
     }
     data_type_correspondence data_type = op_to_resp_data_type(new_response.op_code);
 
@@ -332,7 +333,7 @@ void help(){
            "\tbytes - Devuelve la cantidad de bytes transferidos.\n"
            "\tgetbuff - Devuelve el tamaño del buffer utilizado.\n"
            "\tsetbuff <buffsize> - Cambia el tamaño del buffer utilizado.\n"
-           "\tgettimeout - Devuelve el timeout del buffer utilizado.\n"
+           "\tgettimeout - Devuelve el timeout utilizado.\n"
            "\tsettimeout <timeout> - Cambia el timeout utilizado.\n"
            "\tgeterror - Devuelve el file hacia donde se redirige el error.\n"
            "\tseterror <errfile> - Cambia el file hacia donde se redirige el error.\n"

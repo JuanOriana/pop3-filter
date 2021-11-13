@@ -25,7 +25,6 @@ void manager_passive_accept(struct selector_key *key)
     memset(buffer_in, 0, 1024);
     memset(buffer_out, 0, 1024);
 
-
     ssize_t n = recvfrom(key->fd, buffer_in, 1024, 0, (struct sockaddr *)&client_addr, &client_addr_len);
     if (n <= 0)
     {
@@ -43,7 +42,7 @@ void manager_passive_accept(struct selector_key *key)
     response.op_code = request.op_code;
     response.v_type = SAP_V_1_0_0;
     response.req_id = request.req_id;
-    response.status_code = SC_OK;
+    response.status_code = SC_COMMAND_UNSUPPORTED;
     memcpy(response.data.string,"hola",5);
 
 
