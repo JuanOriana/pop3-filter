@@ -1048,18 +1048,31 @@ static void filter_close(struct selector_key *key){
 unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
     size_t max_size_to_read;
     ssize_t readed;
-    buffer *buffer = copy->read_buffer;
+    buffer *src = copy->read_buffer;
     unsigned ret_value = COPYING;
     connection *connection = ATTACHMENT(key);
 
-    uint8_t *ptr = buffer_write_ptr(buffer, &max_size_to_read);
+
+    uint8_t *dest_buffer = malloc(BUFFSIZE);
+    buffer *dest;
+    dest = malloc(sizeof(buffer));
+    buffer_init(dest, BUFFSIZE, dest_buffer); // Errores?
+
+
+
+    uint8_t *ptr = buffer_write_ptr(dest, &max_size_to_read);
     errno=0;
     readed = read(key->fd, ptr, max_size_to_read);
+
+    bool error =false;
+    
     
        
     if (readed > 0)
     {
-        buffer_write_adv(buffer, readed);
+        buffer_write_adv(dest, readed);
+        filter_parser_state state = filter_parser_consume(&connection->filter_add_parser,dest,src,false,&error);
+
     }
     else if( readed ==0)
     {
