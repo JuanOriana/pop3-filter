@@ -15,6 +15,7 @@
 #define MAX_REQ_ID 65535
 #define SERVER_VERSION SAP_V_1_0_0
 #define AUTH 0
+#define TIMEOUT_SEC 5
 
 // For Mac OS
 #ifndef MSG_CONFIRM
@@ -51,6 +52,7 @@ typedef struct client_command_t{
 
 
 
+void help();
 void build_blank_request(sap_request * new_request, op_code op_code);
 void build_single_request(sap_request * new_request,op_code op_code,uint8_t single_data);
 void build_short_request(sap_request * new_request,op_code op_code,uint16_t short_data);
@@ -66,6 +68,7 @@ int get_error_req(sap_request * new_request, char * param);
 int set_error_req(sap_request * new_request, char * param);
 int get_filter_req(sap_request * new_request, char * param);
 int set_filter_req(sap_request * new_request, char * param);
+void handle_response(sap_response new_response, char * prev_message);
 
 client_command_t client_commands[] = {
         {.name="historic", .handler = historic_connections_req, .success_message="La cantidad de conexiones historicas es: "},
@@ -86,10 +89,16 @@ handler_fun_type handlers[] = {historic_connections_req, current_connections_req
                                get_error_req,set_error_req, get_filter_req, set_filter_req};
 int go_on = 1;
 
-int main() {
-    int sockfd;
+int main(int argc, const char* argv[]) {
+
+    if (argc != 3){
+        fprintf(stderr,"Uso: client <manag_addr> <manag_port>");
+        exit(EXIT_FAILURE);
+
+    }
+    int sockfd, valid_param,port;
     struct sockaddr_in servaddr;
-    char buffer_in[1024], buffer_out[1024], input[1024];
+    char buffer_in[1024], buffer_out[1024], user_input[100], *command_name, *param;
     memset(buffer_in, 0, 1024);
     memset(buffer_out, 0, 1024);
 
@@ -98,22 +107,57 @@ int main() {
         perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
+    struct timeval tv;
+    tv.tv_sec = TIMEOUT_SEC;
+    tv.tv_usec = 0;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
+        perror("couldn't set timeout options");
+        exit(EXIT_FAILURE);
+    }
 
     memset(&servaddr, 0, sizeof(servaddr));
+    if ((port = htons(atoi(argv[2]))) <= 0){
+        fprintf(stderr,"Puerto invalido");
+        exit(EXIT_FAILURE);
+    }
 
     // Filling server information
     servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons(9090);
-    servaddr.sin_addr.s_addr = INADDR_ANY;
+    servaddr.sin_port = port;
+    servaddr.sin_addr.s_addr = inet_addr(argv[1]);
 
     while(go_on) {
-        memset(input, 0, 1024);
-        scanf("%s",input);
-        printf("%s",input);
-        request.op_code = OP_GET_FILTER;
-        request.req_id = 1;
-        request.auth_id = 42;
-        request.v_type = SAP_V_1_0_0;
+        command_name = param = NULL;
+        memset(user_input, 0, 100);
+        printf("sap_client >> ");
+        fgets(user_input,100,stdin);
+        //Remove \r\n or \n
+        user_input[strcspn(user_input, "\r\n")] = 0;
+        command_name = strtok(user_input, " ");
+        if (command_name != NULL) {
+            param = strtok(NULL, " ");
+        }
+        int i;
+
+        //Special case for help;
+        if (strcmp(command_name, "help") == 0){
+            help();
+            continue;
+        }
+        for (i =0; i < COMMAND_TOTAL_COUNT; i++){
+            if (strcmp(command_name,client_commands[i].name) == 0){
+                valid_param = client_commands[i].handler(&request,param);
+                break;
+            }
+        }
+        if (i == COMMAND_TOTAL_COUNT){
+            printf("Comando invalido, vea la lista de comandos ingresando 'help'\n");
+            continue;
+        }
+        if (valid_param < 0){
+            printf("Parametro invalido para el comando %s\n",command_name);
+            continue;
+        }
 
         int n;
         socklen_t len;
@@ -126,18 +170,22 @@ int main() {
                MSG_CONFIRM, (const struct sockaddr *) &servaddr,
                sizeof(servaddr));
 
-        log(DEBUG, "Sending message!.\n");
-
         n = recvfrom(sockfd, (char *) buffer_in, MAXLINE,
                      MSG_WAITALL, (struct sockaddr *) &servaddr,
                      &len);
+        if (n < 0)
+        {
+            printf("No obtuvimos respuesta del servidor, puede ser que este lento pero por si las dudas verifique que ingreso correctamente"
+                   "la direccion y el puerto del manager.\n");
+            continue;
+        }
 
         if (sap_buffer_to_response(buffer_in, &response) < 0) {
             log(ERROR, "Error converting buffer to response");
 
         }
-        log(DEBUG, "V-type: %d\nreq_id: %d\nop_code: %d\nstatus_code %d\n",
-            response.v_type, response.req_id, response.op_code, response.status_code);
+
+        handle_response(response,client_commands[i].success_message);
     }
 
     close(sockfd);
@@ -193,8 +241,11 @@ int get_buff_size_req(sap_request * new_request, char * param){
 }
 
 int set_buff_size_req(sap_request * new_request, char * param){
+    if (param == NULL){
+        return -1;
+    }
     int short_data = atoi(param);
-    if (short_data < 0 || short_data > UINT16_MAX )
+    if (short_data <= 0 || short_data > UINT16_MAX )
         return -1;
     build_short_request(new_request,OP_SET_BUFF_SIZE,(uint16_t )short_data);
     return 0;
@@ -206,8 +257,11 @@ int get_timeout_req(sap_request * new_request, char * param){
 }
 
 int set_timeout_req(sap_request * new_request, char * param){
+    if (param == NULL){
+        return -1;
+    }
     int single_data = atoi(param);
-    if (single_data < 0 || single_data > UINT8_MAX )
+    if (single_data <= 0 || single_data > UINT8_MAX )
         return -1;
     build_single_request(new_request,OP_SET_TIMEOUT,(uint8_t)single_data);
     return 0;
@@ -219,6 +273,9 @@ int get_error_req(sap_request * new_request, char * param){
 }
 
 int set_error_req(sap_request * new_request, char * param){
+    if (param == NULL){
+        return -1;
+    }
     build_string_request(new_request,OP_SET_ERROR_FILE,param,strlen(param));
     return 0;
 }
@@ -229,6 +286,9 @@ int get_filter_req(sap_request * new_request, char * param){
 }
 
 int set_filter_req(sap_request * new_request, char * param){
+    if (param == NULL){
+        return -1;
+    }
     build_string_request(new_request,OP_SET_FILTER,param, strlen(param));
     return 0;
 }
@@ -258,4 +318,20 @@ void handle_response(sap_response new_response, char * prev_message){
     }
     printf("\n");
 
+}
+
+void help(){
+    printf("\nAqui la lista de comandos habilitados para el manejo de SAP, van todos en minuscula\n"
+           "help - Devuelve la lista de comandos disponibles.\n"
+           "historic - Devuelve la cantidad de conexiones historicas.\n"
+           "current - Devuelve la cantidad de conexiones actuales.\n"
+           "bytes - Devuelve la cantidad de bytes transferidos.\n"
+           "getbuff - Devuelve el tamaño del buffer utilizado.\n"
+           "setbuff <buffsize> - Cambia el tamaño del buffer utilizado.\n"
+           "gettimeout - Devuelve el timeout del buffer utilizado.\n"
+           "settimeout <timeout> - Cambia el timeout utilizado.\n"
+           "geterror - Devuelve el file hacia donde se redirige el error.\n"
+           "seterror <errfile> - Cambia el file hacia donde se redirige el error.\n"
+           "getfilter - Devuelve el filtro que usa el transform.\n"
+           "setfilter <filter> - Cambia el filtro que usa el transform.\n\n");
 }
