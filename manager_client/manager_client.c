@@ -129,7 +129,9 @@ int main(int argc, const char* argv[]) {
     while(go_on) {
         command_name = param = NULL;
         memset(user_input, 0, 100);
+        printf("\033[0;32m");
         printf("sap_client >> ");
+        printf("\033[0m");
         fgets(user_input,100,stdin);
         //Remove \r\n or \n
         user_input[strcspn(user_input, "\r\n")] = 0;
@@ -175,8 +177,10 @@ int main(int argc, const char* argv[]) {
                      &len);
         if (n < 0)
         {
+            printf("\033[0;31m");
             printf("No obtuvimos respuesta del servidor, puede ser que este lento pero por si las dudas verifique que ingreso correctamente"
                    "la direccion y el puerto del manager.\n");
+            printf("\033[0m");
             continue;
         }
 
