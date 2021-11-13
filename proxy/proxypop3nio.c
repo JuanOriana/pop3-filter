@@ -23,6 +23,7 @@
 #include "../parsers/include/hello_parser.h"
 #include "../parsers/include/command_parser.h"
 #include "../parsers/include/command_response_parser.h"
+#include "../parsers/include/filter_parser.h"
 
 
 #define MAX_SOCKETS 30
@@ -118,6 +119,8 @@ typedef struct connection
 
     command_parser command_parser;
     command_response_parser command_response_parser;
+    filter_parser filter_add_parser;
+    filter_parser filter_skip_parser;
 
     command_instance * current_command;
     bool is_awaiting_response_from_origin;
@@ -824,6 +827,10 @@ static void filter_init(struct selector_key * key){
         close(filter->read_pipe[0]);
         filter->read_pipe[0] = -1;
 
+
+        filter_parser_init(&connection->filter_add_parser);
+        filter_parser_init(&connection->filter_skip_parser);
+
         if( (selector_fd_set_nio(filter->write_pipe[0]) < 0) || (selector_fd_set_nio(filter->read_pipe[1]) < 0)){
             log(ERROR,"Failed to set not blocking to filter sockets on proxy");
             // TODO SI HAY QUE ABORTAR LA CONEXION O QUE.
@@ -1254,10 +1261,20 @@ static unsigned write_to_filter(struct selector_key *key,struct copy *copy){
     size_t max_size_to_write;
     ssize_t sended;
     connection *connection = ATTACHMENT(key);
-    buffer *buffer = copy->write_buffer;
-    uint8_t *ptr = buffer_read_ptr(buffer, &max_size_to_write);
+    buffer *src = copy->write_buffer;
 
-    ret_value = analize_process_response(connection,buffer,false,true);
+    uint8_t *dest_buffer = malloc(BUFFSIZE);
+    buffer *dest;
+    dest = malloc(sizeof(buffer));
+    buffer_init(dest, BUFFSIZE, dest_buffer); // Errores?
+    
+    bool error = false;
+
+
+    filter_state state = filter_parser_consume(&connection->filter_skip_parser,src,dest,true,&error);
+    ret_value = analize_process_response(connection,dest,false,true);
+    bool aux = buffer_can_read(src);
+    uint8_t *ptr = buffer_read_ptr(dest, &max_size_to_write);
     sended = write(key->fd, ptr, max_size_to_write);
 
     if(sended<0){
@@ -1268,8 +1285,8 @@ static unsigned write_to_filter(struct selector_key *key,struct copy *copy){
 
         /// TODO ANALIZAR que quedo en el buffer
     }else{
-        buffer_read_adv(buffer,sended);
-        if(connection->command_response_parser.state == RESPONSE_INIT && !buffer_can_read(buffer)){
+        // buffer_read_adv(buffer,sended);
+        if(connection->command_response_parser.state == RESPONSE_INIT && !buffer_can_read(src)){
             connection->filter.state = FILTER_FINISHED_SENDING;
         }
     }
