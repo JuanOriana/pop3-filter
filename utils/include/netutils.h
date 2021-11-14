@@ -13,6 +13,12 @@ typedef enum IP_REP_TYPE
     ADDR_DOMAIN,
 } IP_REP_TYPE;
 
+typedef enum passive_type
+{
+    PASSIVE_TCP,
+    PASSIVE_UDP,
+} passive_type;
+
 typedef union address_multi_storage
 {
     char fqdn[0xFF];
