@@ -71,7 +71,7 @@ int sap_buffer_to_response(char *buffer, sap_response * response)
     response->req_id = ntohs(*((uint16_t *)buffer));
     buffer += sizeof(uint16_t);
 
-    if (response->status_code != SC_OK)
+    if (response->status_code == SC_OK)
         assign_proper_data_type(&response->data,op_to_resp_data_type(response->op_code), buffer);
 
     return 0;
@@ -136,7 +136,7 @@ int sap_response_to_buffer(char* buffer,sap_response * response, int* size){
     memcpy(buffer_travel,&to_copy,sizeof(uint16_t));
     buffer_travel += sizeof(uint16_t);
 
-    if (response->status_code != SC_OK)
+    if (response->status_code == SC_OK)
         copy_data_to_buff(response->data, op_to_resp_data_type(response->op_code), buffer_travel);
 
     return 0;
@@ -239,8 +239,8 @@ data_type_correspondence op_to_req_data_type(op_code op_code){
 data_type_correspondence op_to_resp_data_type(op_code op_code){
     switch (op_code) {
         case OP_GET_TIMEOUT:
-        case OP_IS_FILTER_WORKING:
-        case OP_TOGGLE_FILTER:
+       // case OP_IS_FILTER_WORKING:
+       // case OP_TOGGLE_FILTER:
             return SAP_SINGLE;
         case OP_GET_BUFF_SIZE:
             return SAP_SHORT;

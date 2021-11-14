@@ -15,6 +15,8 @@ typedef enum packet_type{
     SAP_RESP
 }packet_type;
 
+#define SAP_OP_SIZE 9
+
 typedef enum op_code
 {
     OP_STATS,
@@ -26,8 +28,8 @@ typedef enum op_code
     OP_SET_ERROR_FILE,
     OP_GET_FILTER,
     OP_SET_FILTER,
-    OP_IS_FILTER_WORKING,
-    OP_TOGGLE_FILTER
+//    OP_IS_FILTER_WORKING,
+//    OP_TOGGLE_FILTER
 } op_code;
 
 typedef enum server_version
@@ -53,6 +55,15 @@ typedef enum data_type_correspondence
     SAP_LONG,
     SAP_STRING,
 } data_type_correspondence;
+
+#define STAT_TYPE_COUNT 3
+
+typedef enum stat_type
+{
+    SAP_STAT_HISTORIC,
+    SAP_STAT_CURRENT,
+    SAP_STAT_BYTES
+} stat_type;
 
 typedef union sap_data_type
 {

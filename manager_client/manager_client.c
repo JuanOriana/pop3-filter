@@ -42,11 +42,11 @@ typedef enum client_command_enum{
     C_CM_SET_FILTER,
 } client_command_enum;
 
-typedef int (*handler_fun_type) ( sap_request *, char *);
+typedef int (*req_handler_fun_type) ( sap_request *, char *);
 
 typedef struct client_command_t{
     char * name;
-    handler_fun_type handler;
+    req_handler_fun_type handler;
     char * success_message;
 }client_command_t;
 
@@ -84,9 +84,6 @@ client_command_t client_commands[] = {
         {.name="setfilter", .handler = set_filter_req, .success_message="Filtro actualizado correctamente"}
 };
 
-handler_fun_type handlers[] = {historic_connections_req, current_connections_req, transfered_bytes_req,
-                               get_buff_size_req, set_buff_size_req, get_timeout_req, set_timeout_req,
-                               get_error_req,set_error_req, get_filter_req, set_filter_req};
 int go_on = 1;
 
 int main(int argc, const char* argv[]) {
@@ -299,7 +296,9 @@ int set_filter_req(sap_request * new_request, char * param){
 
 void handle_response(sap_response new_response, char * prev_message){
     if (new_response.status_code != 0){
-        printf("Error! %s\n", sap_error(new_response.status_code));
+        printf("\033[0;31m");
+        printf("Error: %s\n", sap_error(new_response.status_code));
+        printf("\033[0m");
         return;
     }
     data_type_correspondence data_type = op_to_resp_data_type(new_response.op_code);
