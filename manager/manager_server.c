@@ -13,6 +13,7 @@
 
 #define SERVER_VERSION SAP_V_1_0_0
 #define AUTH 0
+#define MAX_LINE 1024
 
 void build_blank_response_with_status(sap_response * new_response, sap_request new_request, status_code status);
 void build_blank_response(sap_response * new_response, sap_request new_request);
@@ -45,13 +46,14 @@ void manager_passive_accept(struct selector_key *key)
 {
     struct sockaddr_storage client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
-    char buffer_in[1024], buffer_out[1024];
+    char buffer_in[MAX_LINE], buffer_out[MAX_LINE];
     int out_len = 0;
-    //Limpiamos buffers
-    memset(buffer_in, 0, 1024);
-    memset(buffer_out, 0, 1024);
 
-    ssize_t n = recvfrom(key->fd, buffer_in, 1024, 0, (struct sockaddr *)&client_addr, &client_addr_len);
+    //Limpiamos buffers
+    memset(buffer_in, 0, MAX_LINE);
+    memset(buffer_out, 0, MAX_LINE);
+
+    ssize_t n = recvfrom(key->fd, buffer_in, MAX_LINE, 0, (struct sockaddr *)&client_addr, &client_addr_len);
     if (n <= 0)
     {
         log(ERROR, "recvfrom() failed: %s ", strerror(errno));
@@ -60,9 +62,6 @@ void manager_passive_accept(struct selector_key *key)
     if (sap_buffer_to_request(buffer_in, &request) < 0){
         log(ERROR,"Error converting buffer to request");
     }
-
-    log(DEBUG, "Version: %d\nop_code: %d\nauth_id:%d\nreq_id:%d ",
-        request.v_type, request.op_code, request.auth_id, request.req_id);
 
     if (request.auth_id != AUTH){
         build_blank_response_with_status(&response,request,SC_UNAUTHORIZED);
@@ -83,7 +82,6 @@ void manager_passive_accept(struct selector_key *key)
 
     // Enviamos respuesta (el sendto no bloquea)
     sendto(key->fd, buffer_out, out_len, 0, (const struct sockaddr *)&client_addr, client_addr_len);
-    log(DEBUG, "UDP sent:%s", buffer_out);
 
 }
 

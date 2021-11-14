@@ -37,6 +37,7 @@ int main(int argc, char *argv[])
     const char *err_msg = NULL;
     int ret = 0;
     int proxy4 = -1, proxy6 = -1, manag4=-1, manag6=-1;
+    int proxy_socks[2],proxy_socks_size =0, manag_socks[2], manag_socks_size = 0;
     address_representation origin_representation;
     parse_args(argc, argv, &pop3_proxy_args);
 
@@ -56,6 +57,9 @@ int main(int argc, char *argv[])
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
+    else{
+        proxy_socks[proxy_socks_size++] = proxy4;
+    }
 
     proxy6 = build_passive(ADDR_IPV6, PASSIVE_TCP);
 
@@ -69,8 +73,11 @@ int main(int argc, char *argv[])
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
+    else{
+        proxy_socks[proxy_socks_size++] = proxy6;
+    }
 
-    if (proxy4 < 0 && proxy6 < 0)
+    if (proxy_socks_size == 0)
     {
         log(FATAL, "Couldnt establish ANY passive socket for proxy");
     }
@@ -87,6 +94,9 @@ int main(int argc, char *argv[])
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
+    else{
+        manag_socks[manag_socks_size++] = manag4;
+    }
 
     manag6 = build_passive(ADDR_IPV6, PASSIVE_UDP);
 
@@ -100,8 +110,11 @@ int main(int argc, char *argv[])
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
+    else{
+        manag_socks[manag_socks_size++] = manag6;
+    }
 
-    if (manag4 < 0 && manag6 < 0)
+    if (manag_socks_size == 0)
     {
         log(FATAL, "Couldnt establish ANY passive socket for manager");
     }
@@ -113,6 +126,7 @@ int main(int argc, char *argv[])
             .tv_nsec = 0,
         },
     };
+
     if (0 != selector_init(&conf))
     {
         err_msg = "initializing selector";
@@ -143,42 +157,20 @@ int main(int argc, char *argv[])
     origin_representation.port = pop3_proxy_args.origin_port;
     get_address_representation(&origin_representation, pop3_proxy_args.origin_addr);
 
-    if (proxy4 >= 0)
-    {
-        ss = selector_register(selector, proxy4, &proxy_passive_handler, OP_READ, &origin_representation);
+    for (int i = 0; i < proxy_socks_size; i++){
+        ss = selector_register(selector, proxy_socks[i], &proxy_passive_handler, OP_READ, &origin_representation);
         if (ss != SELECTOR_SUCCESS)
         {
-            err_msg = "registering ipv4 passive fd";
+            err_msg = "registering proxy passive fd";
             goto selector_finally;
         }
     }
 
-    if (proxy6 >= 0)
-    {
-        ss = selector_register(selector, proxy6, &proxy_passive_handler, OP_READ, &origin_representation);
+    for (int i = 0; i < manag_socks_size; i++){
+        ss = selector_register(selector, manag_socks[i], &manager_passive_handler, OP_READ, NULL);
         if (ss != SELECTOR_SUCCESS)
         {
-            err_msg = "registering ipv6 passive fd";
-            goto selector_finally;
-        }
-    }
-
-    if (manag4 >= 0)
-    {
-        ss = selector_register(selector, manag4, &manager_passive_handler, OP_READ, NULL);
-        if (ss != SELECTOR_SUCCESS)
-        {
-            err_msg = "registering ipv4 manager passive fd";
-            goto selector_finally;
-        }
-    }
-
-    if (manag6 >= 0)
-    {
-        ss = selector_register(selector, manag6, &manager_passive_handler, OP_READ, NULL);
-        if (ss != SELECTOR_SUCCESS)
-        {
-            err_msg = "registering ipv6 manager passive fd";
+            err_msg = "registering manager passive fd";
             goto selector_finally;
         }
     }
@@ -203,10 +195,6 @@ int main(int argc, char *argv[])
             goto selector_finally;
         }
     }
-    if (err_msg == NULL)
-    {
-        err_msg = "closing";
-    }
 
 selector_finally:
     if (ss != SELECTOR_SUCCESS)
@@ -228,22 +216,14 @@ selector_finally:
     }
     selector_close();
 
-    if (proxy4 >= 0)
-    {
-        close(proxy4);
+    for (int i = 0; i < proxy_socks_size; i++){
+        close(proxy_socks[i]);
     }
-    if (proxy6 >= 0)
-    {
-        close(proxy6);
+
+    for (int i = 0; i < manag_socks_size; i++){
+        close(manag_socks[i]);
     }
-    if (manag4 >= 0)
-    {
-        close(proxy6);
-    }
-    if (manag6 >= 0)
-    {
-        close(proxy6);
-    }
+
     connection_pool_destroy();
     return ret;
 }

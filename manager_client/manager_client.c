@@ -12,8 +12,8 @@
 #include "../utils/include/netutils.h"
 #include "../include/args.h"
 
-#define MAXLINE 1024
-#define MAX_REQ_ID 65535
+#define MAXLINE 2048
+#define USER_INPUT_SIZE 100
 #define SERVER_VERSION SAP_V_1_0_0
 #define AUTH 0
 #define TIMEOUT_SEC 5
@@ -98,10 +98,10 @@ int main(int argc, const char* argv[]) {
     int sockfd, valid_param,port, ip_type = ADDR_IPV4;
     struct sockaddr_in servaddr;
     struct sockaddr_in6 servaddr6;
-    char buffer_in[1024], buffer_out[1024], user_input[100], *command_name, *param;
-    memset(buffer_in, 0, 1024);
-    memset(buffer_out, 0, 1024);
+    char buffer_in[MAXLINE], buffer_out[MAXLINE], user_input[USER_INPUT_SIZE], *command_name, *param;
 
+    memset(buffer_in, 0, MAXLINE);
+    memset(buffer_out, 0, MAXLINE);
     memset(&servaddr, 0, sizeof(servaddr));
     memset(&servaddr6, 0, sizeof(servaddr6));
 
@@ -114,11 +114,11 @@ int main(int argc, const char* argv[]) {
     {
         servaddr.sin_family = AF_INET;
         servaddr.sin_port = port;
-    }else if(inet_pton(AF_INET6, argv[1], &servaddr6.sin6_addr) > 0){
+    }
+    else if(inet_pton(AF_INET6, argv[1], &servaddr6.sin6_addr) > 0){
         servaddr6.sin6_family = AF_INET6;
         servaddr6.sin6_port = port;
         ip_type = ADDR_IPV6;
-
     }
 
     // Creating socket file descriptor
@@ -137,24 +137,25 @@ int main(int argc, const char* argv[]) {
 
     while(go_on) {
         command_name = param = NULL;
-        memset(user_input, 0, 100);
+        memset(user_input, 0, USER_INPUT_SIZE);
         printf("\033[0;32m");
         printf("sap_client >> ");
         printf("\033[0m");
-        fgets(user_input,100,stdin);
+        fgets(user_input,USER_INPUT_SIZE,stdin);
         //Remove \r\n or \n
         user_input[strcspn(user_input, "\r\n")] = 0;
         command_name = strtok(user_input, " ");
         if (command_name != NULL) {
             param = strtok(NULL, " ");
         }
-        int i;
 
-        //Special case for help;
+        //Special case for help
         if (strcmp(command_name, "help") == 0){
             help();
             continue;
         }
+
+        int i;
         for (i =0; i < COMMAND_TOTAL_COUNT; i++){
             if (strcmp(command_name,client_commands[i].name) == 0){
                 valid_param = client_commands[i].handler(&request,param);
@@ -194,6 +195,8 @@ int main(int argc, const char* argv[]) {
                          MSG_WAITALL, (struct sockaddr *) &servaddr6,
                          &len);
         }
+
+        // Timeout
         if (n < 0)
         {
             printf("\033[0;31m");
