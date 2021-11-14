@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
 {
     const char *err_msg = NULL;
     int ret = 0;
-    int proxy4 = -1, proxy6 = -1, manag4=-1, manag6=-1;
+    int temp_sock=-1;
     int proxy_socks[2],proxy_socks_size =0, manag_socks[2], manag_socks_size = 0;
     address_representation origin_representation;
     parse_args(argc, argv, &pop3_proxy_args);
@@ -46,35 +46,35 @@ int main(int argc, char *argv[])
     selector_status ss = SELECTOR_SUCCESS;
     fd_selector selector = NULL;
 
-    proxy4 = build_passive(ADDR_IPV4, PASSIVE_TCP);
-    if (proxy4 < 0)
+    temp_sock = build_passive(ADDR_IPV4, PASSIVE_TCP);
+    if (temp_sock < 0)
     {
         log(DEBUG, "Unable to build proxy passive socket in IPv4");
     }
-    else if (selector_fd_set_nio(proxy4) == -1)
+    else if (selector_fd_set_nio(temp_sock) == -1)
     {
         perror("SELECTOR ");
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
     else{
-        proxy_socks[proxy_socks_size++] = proxy4;
+        proxy_socks[proxy_socks_size++] = temp_sock;
     }
 
-    proxy6 = build_passive(ADDR_IPV6, PASSIVE_TCP);
+    temp_sock = build_passive(ADDR_IPV6, PASSIVE_TCP);
 
-    if (proxy6 < 0)
+    if (temp_sock < 0)
     {
         log(DEBUG, "Unable to build proxy passive socket in IPv6");
     }
-    else if (selector_fd_set_nio(proxy6) == -1)
+    else if (selector_fd_set_nio(temp_sock) == -1)
     {
         perror("SELECTOR ");
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
     else{
-        proxy_socks[proxy_socks_size++] = proxy6;
+        proxy_socks[proxy_socks_size++] = temp_sock;
     }
 
     if (proxy_socks_size == 0)
@@ -82,36 +82,36 @@ int main(int argc, char *argv[])
         log(FATAL, "Couldnt establish ANY passive socket for proxy");
     }
 
-    manag4 = build_passive(ADDR_IPV4, PASSIVE_UDP);
+    temp_sock = build_passive(ADDR_IPV4, PASSIVE_UDP);
 
-    if (manag4 < 0)
+    if (temp_sock < 0)
     {
         log(DEBUG, "Unable to build manager passive socket in IPv4");
     }
-    else if (selector_fd_set_nio(manag4) == -1)
+    else if (selector_fd_set_nio(temp_sock) == -1)
     {
         perror("SELECTOR ");
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
     else{
-        manag_socks[manag_socks_size++] = manag4;
+        manag_socks[manag_socks_size++] = temp_sock;
     }
 
-    manag6 = build_passive(ADDR_IPV6, PASSIVE_UDP);
+    temp_sock = build_passive(ADDR_IPV6, PASSIVE_UDP);
 
-    if (manag6 < 0)
+    if (temp_sock < 0)
     {
         log(DEBUG, "Unable to build manager passive socket in IPv6");
     }
-    else if (selector_fd_set_nio(manag6) == -1)
+    else if (selector_fd_set_nio(temp_sock) == -1)
     {
         perror("SELECTOR ");
         err_msg = "Proxy: Selector_fd_set_nio, getting server socket flags";
         goto selector_finally;
     }
     else{
-        manag_socks[manag_socks_size++] = manag6;
+        manag_socks[manag_socks_size++] = temp_sock;
     }
 
     if (manag_socks_size == 0)
@@ -214,6 +214,7 @@ selector_finally:
     {
         selector_destroy(selector);
     }
+
     selector_close();
 
     for (int i = 0; i < proxy_socks_size; i++){
