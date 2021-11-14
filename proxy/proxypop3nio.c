@@ -23,12 +23,14 @@
 #include "../parsers/include/hello_parser.h"
 #include "../parsers/include/command_parser.h"
 #include "../parsers/include/command_response_parser.h"
+#include "../parsers/include/filter_parser.h"
 
 
 #define MAX_SOCKETS 30
 #define BUFFSIZE 2048
 #define ADDR_STRING_BUFF_SIZE 64
 #define MAX_POOL 50
+#define START_MESSAGE_SIZE 30
 
 //Patch for MacOS
 #ifndef MSG_NOSIGNAL
@@ -85,6 +87,7 @@ typedef enum
 struct filter_data{
     int     write_pipe[2];
     int     read_pipe[2];
+    char * start_message;
     pid_t   slave_proc_pid;
     filter_state state;
 };
@@ -107,6 +110,7 @@ typedef struct connection
     buffer *read_buffer;
     buffer *write_buffer;
     buffer *filter_buffer;
+    buffer *filter_parser_buffer; // Buffer auxiliar que se utiliza para almcenar el resultado de parsear para o del filtro
 
     struct hello_struct hello_client;
     struct copy copy_client;
@@ -118,6 +122,8 @@ typedef struct connection
 
     command_parser command_parser;
     command_response_parser command_response_parser;
+    filter_parser filter_add_parser;
+    filter_parser filter_skip_parser;
 
     command_instance * current_command;
     bool is_awaiting_response_from_origin;
@@ -179,7 +185,7 @@ static const struct fd_handler proxy_handler = {
     .handle_time_out = proxy_time_out,
 };
 
-static void analize_response(connection * connection, bool * new_response);
+static void analize_response(connection * connection);
 
 unsigned on_read_ready_copying(struct selector_key *key);
 unsigned on_write_ready_copying(struct selector_key *key);
@@ -335,8 +341,8 @@ struct connection *new_connection(int client_fd, address_representation origin_a
 {
     connection *new_connection;
 
-    buffer *read_buf, *write_buf,*filter_buf;
-    uint8_t *direct_buff, *direct_buff_origin,*direct_buff_filter;
+    buffer *read_buf, *write_buf,*filter_buf,*filter_parser_buffer;
+    uint8_t *direct_buff, *direct_buff_origin,*direct_buff_filter,*direct_filter_parser_buffer;
 
     // Verifico si es el primero
     if (connection_pool == NULL)
@@ -349,12 +355,15 @@ struct connection *new_connection(int client_fd, address_representation origin_a
         direct_buff = malloc(BUFFSIZE);
         direct_buff_filter = malloc(BUFFSIZE);
         direct_buff_origin = malloc(BUFFSIZE);
+        direct_filter_parser_buffer = malloc(BUFFSIZE);
         read_buf = malloc(sizeof(buffer));
-        buffer_init(read_buf, BUFFSIZE, direct_buff); // Errores?
+        buffer_init(read_buf, BUFFSIZE, direct_buff);
         write_buf = malloc(sizeof(buffer));
         buffer_init(write_buf, BUFFSIZE, direct_buff_origin); // Errores?
         filter_buf = malloc(sizeof(buffer));
         buffer_init(filter_buf, BUFFSIZE, direct_buff_filter); // Errores?
+        filter_parser_buffer = malloc(sizeof(buffer));
+        buffer_init(filter_parser_buffer, BUFFSIZE, direct_filter_parser_buffer); 
     }
     else
     {
@@ -373,6 +382,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     new_connection->read_buffer = read_buf;
     new_connection->write_buffer = write_buf;
     new_connection->filter_buffer = filter_buf;
+    new_connection ->filter_parser_buffer = filter_parser_buffer;
     new_connection->origin_address_representation = origin_address_representation;
     new_connection->next = NULL;
     new_connection->references = 1;
@@ -435,7 +445,13 @@ static unsigned start_connection_with_origin(fd_selector selector, connection *c
     return CONNECTING;
 
 connectionfinally:
-    connection->dns_resolution_current_iter = connection->dns_resolution_current_iter->ai_next;
+    if(connection->dns_resolution_current_iter == NULL){
+        log(ERROR,"VER QUE ERROR SERIA ESTE");
+    }else{
+        // TODO: AL HACER ESTO TIRA UN SEG FAULT
+         connection->dns_resolution_current_iter = connection->dns_resolution_current_iter->ai_next;
+    }
+
     // This only makes sense if it's the last iteration (drowning the selector)
     if (connection->dns_resolution_current_iter == NULL) {
         log(ERROR, "Cant connect to origin server.");
@@ -516,8 +532,8 @@ static void proxy_time_out(struct selector_key *key){
         // connection_destroy(ATTACHMENT(key)); /// TODO: ARREGLAR EL PROXY_DESTROY
         selector_unregister_fd(key->s,connection->origin_fd);
         selector_unregister_fd(key->s,connection->client_fd);
-        close(connection->client_fd);
-        close(connection->origin_fd);
+//        close(connection->client_fd);
+//        close(connection->origin_fd);
     }
 }
 
@@ -613,6 +629,8 @@ static unsigned dns_resolve_done(struct selector_key *key)
 static void connection_destroy(connection *connection)
 {
     // CLOSE SOCKETS? 
+    close(connection->origin_fd);
+    close(connection->client_fd);
     // TODO: Ver si metemos el destroy filter aca
     log(DEBUG,"Closing connection");
     free(connection->read_buffer->data);
@@ -756,7 +774,12 @@ unsigned on_write_ready_hello(struct selector_key *key){
 }
 
 /////////////////// FUNCIONES DEL FILTER //////////////////////////////////////////////////
-
+static void set_enviroment_variables(connection *connection){
+    
+    setenv("POP3FILTER_VERSION",DEFAULT_PROXY_POP3_VERSION_NUMBER,1);
+    setenv("POP3_USERNAME",connection->session.name,1);
+    setenv("POP3_SERVER",connection->origin_addr_humanized,1);
+}
 
 static void filter_init(struct selector_key * key){
     log(DEBUG,"Starting filter");
@@ -780,8 +803,9 @@ static void filter_init(struct selector_key * key){
     if((pid = fork()) == 0){
         filter->slave_proc_pid = -1;
 
-
         close(STDERR_FILENO);
+        open(pop3_proxy_args.error_file, O_WRONLY | O_APPEND);
+
         //Cerramos las partes del pipe que no vamos a utilizar
         close(filter->read_pipe[1]); // Recordar pipe[1] es para escritura y pipe[0] para lectura
         close(filter->write_pipe[0]);
@@ -794,9 +818,8 @@ static void filter_init(struct selector_key * key){
         close(filter->read_pipe[0]); 
         close(filter->write_pipe[1]);
 
-        open(pop3_proxy_args.error_file,O_WRONLY | O_APPEND); // O_APPEND indica que escriba a partir del final del archivo
+        set_enviroment_variables(connection); // Seteamos las variables de entorno que algunos filters necesitan
 
-        //TODO: Setear variables de entorno
         if(execl("/bin/sh","sh","-c",pop3_proxy_args.filter,(char * )0) < 0){
             log(ERROR,"Executing command");
             close(filter->read_pipe[0]);
@@ -810,6 +833,12 @@ static void filter_init(struct selector_key * key){
         filter->write_pipe[1] = -1;
         close(filter->read_pipe[0]);
         filter->read_pipe[0] = -1;
+
+        filter->start_message = malloc(sizeof(char) * START_MESSAGE_SIZE);
+
+
+        filter_parser_init(&connection->filter_add_parser);
+        filter_parser_init(&connection->filter_skip_parser);
 
         if( (selector_fd_set_nio(filter->write_pipe[0]) < 0) || (selector_fd_set_nio(filter->read_pipe[1]) < 0)){
             log(ERROR,"Failed to set not blocking to filter sockets on proxy");
@@ -924,29 +953,29 @@ static unsigned analize_process_response(connection * connection, buffer * buffe
     uint8_t * ptr = buffer_read_ptr(buffer,&size);
     const command_response_state state = command_response_parser_consume_until(&connection->command_response_parser, 
     ptr,size, connection->current_command, interest_retr, to_new_command, &errored); 
-    if(errored) {
+    if(errored) { // Esto corresponde a que el origin devuelva una respuesta mal formateada (?)
         connection->error_data.err_msg = "-ERR Unexpected event\r\n";
         ret = ERROR_W_MESSAGE_ST;
     }
-    else if(interest_retr && state == RESPONSE_INTEREST){ 
+    else if(interest_retr && connection->command_response_parser.is_starting_body){  // Hay un interes de filtrar, filtremos entonces
         connection->filter.state = FILTER_START;
         log(DEBUG,"Filter is interest in response");
     }
 
-    analize_response(connection, &new_response);
-    if(new_response)
+    if(state == RESPONSE_INIT) {
+        analize_response(connection);
         connection->is_awaiting_response_from_origin = false;
+    }
 
     return ret;        
 }
 
-static void analize_response(connection * connection, bool * new_response) {
+static void analize_response(connection * connection) {
     char * username;
     size_t username_len;
     
     if(connection->current_command->type != -2) {
         command_instance * current = connection->current_command;
-        *new_response = true;
         if(!connection->session.is_logged) {
             if(current->type == CMD_USER && current->indicator) {
                 username = get_user(*current);
@@ -984,7 +1013,8 @@ unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
     {         
         buffer_write_adv(buffer, readed);
         if(connection->filter.state == FILTER_CLOSE){
-            analize_process_response(connection,buffer,true,true); // El ante ultimo es true por que nos interesa setear para el filter si es de interes la respuesta
+            ret_value = analize_process_response(connection,buffer,connection->current_command->type == CMD_RETR,
+                                                 true); // El ante ultimo es true por que nos interesa setear para el filter si es de interes la respuesta
         }
     }
     else
@@ -1019,6 +1049,7 @@ static void filter_close(struct selector_key *key){
             close(filter->write_pipe[i]);
         }
     }
+    free(filter->start_message);
     memset(filter,0,sizeof(struct filter_data));
     connection->filter.slave_proc_pid = -1;
     connection->filter.state = FILTER_CLOSE;
@@ -1027,23 +1058,40 @@ static void filter_close(struct selector_key *key){
 unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
     size_t max_size_to_read;
     ssize_t readed;
-    buffer *buffer = copy->read_buffer;
+    buffer *dest = copy->read_buffer;
     unsigned ret_value = COPYING;
     connection *connection = ATTACHMENT(key);
 
-    uint8_t *ptr = buffer_write_ptr(buffer, &max_size_to_read);
+
+    buffer *src = connection->filter_parser_buffer;
+    buffer_reset(src); // Limpiamos el buffer ya que solo se usa como estructura auxiliar
+    // Leo lo que mando el filter con el buffer auxiliar asi mando la respuesta parseada al cliente
+    uint8_t *ptr = buffer_write_ptr(src, &max_size_to_read);
     errno=0;
     readed = read(key->fd, ptr, max_size_to_read);
-    
+
+
+    filter_parser_state state;
        
     if (readed > 0)
     {
-        buffer_write_adv(buffer, readed);
+        buffer_write_adv(src, readed);
+        // Copio la respuesta parseada al buffer del cliente
+        state = filter_parser_consume(&connection->filter_add_parser,src,dest,false,connection->filter.start_message);
+
     }
     else if( readed ==0)
     {
+        if(connection->filter_add_parser.state == FILTER_MSG){
+        char * termination_msg      = ".\r\n";
+        for(int i=0;i<3;i++){
+            buffer_write(dest,termination_msg[i]);
+        }
+        connection->filter_add_parser.state = FILTER_DONE;
+        }else{
         filter_close(key);
         analize_process_response(connection,connection->write_buffer,false,true);
+        }
     }else{
         log(ERROR,"Error when reading from filter. Error = %s",strerror(errno));
     }
@@ -1094,7 +1142,7 @@ static fd_interest client_compute_interest(struct selector_key *key)
     connection *connection = ATTACHMENT(key);
     struct copy *copy = &connection->copy_client;
     
-    bool writeFromOrigin = buffer_can_read(copy->write_buffer) && (connection->filter.state == FILTER_START ||connection->filter.state == FILTER_CLOSE); // Todavia no esta el filtro 
+    bool writeFromOrigin = buffer_can_read(copy->write_buffer) && (!connection->filter.state == FILTER_START ||connection->filter.state == FILTER_CLOSE); //TODO: REVISAR ESTO ANTES NO SE NEGABA EL FILTER_START// Todavia no esta el filtro 
 
     bool writeFromFilter = buffer_can_read(connection->copy_filter.read_buffer) && (connection->filter.state == FILTER_WORKING ||connection->filter.state == FILTER_FINISHED_SENDING);
 
@@ -1218,7 +1266,7 @@ static unsigned send_to_origin(struct selector_key *key,struct copy *copy){
     size_t to_send =0;
 
     command_state = command_parser_consume(&connection->command_parser,buffer,false,&connection->is_awaiting_response_from_origin,&to_send);
-    
+
     if(connection->is_awaiting_response_from_origin){
         memcpy(connection->current_command,&connection->command_parser.current_command,sizeof(command_instance));
     }
@@ -1226,6 +1274,7 @@ static unsigned send_to_origin(struct selector_key *key,struct copy *copy){
     sended = send(key->fd, ptr, to_send, MSG_NOSIGNAL);
 
     if(sended<0){
+        log(DEBUG,"Origin in write ready is closing connection");
         shut_down_copy(copy,false);
     }else{
         // No se avanza el puntero de lectura aca por que ya lo hizo el parser al procesar el comando
@@ -1239,11 +1288,20 @@ static unsigned write_to_filter(struct selector_key *key,struct copy *copy){
     size_t max_size_to_write;
     ssize_t sended;
     connection *connection = ATTACHMENT(key);
-    buffer *buffer = copy->write_buffer;
-    uint8_t *ptr = buffer_read_ptr(buffer, &max_size_to_write);
+    buffer *src = copy->write_buffer;
 
-    ret_value = analize_process_response(connection,buffer,false,true);
-    sended = write(key->fd, ptr, max_size_to_write);
+    buffer *dest = connection->filter_parser_buffer;
+    buffer_reset(dest); // Limpio lo que habia en este buffer ya que es solo auxiliar, no me interesa que hay
+   
+    // Primero dejo que el parser de response analice la respuesta
+    ret_value = analize_process_response(connection,src,false,true);
+
+    // Filtro y limpio la respuesta para mandar sin configuracion de pop3 al filter
+    filter_parser_state state = filter_parser_consume(&connection->filter_skip_parser,src,dest,true,connection->filter.start_message);
+
+    // Le mando al filter el resultado de limpiar la respuesta
+    uint8_t *ptr_dest = buffer_read_ptr(dest, &max_size_to_write);
+    sended = write(key->fd, ptr_dest, max_size_to_write);
 
     if(sended<0){
         connection->filter.state = FILTER_FINISHED_SENDING;
@@ -1253,8 +1311,8 @@ static unsigned write_to_filter(struct selector_key *key,struct copy *copy){
 
         /// TODO ANALIZAR que quedo en el buffer
     }else{
-        buffer_read_adv(buffer,sended);
-        if(connection->command_response_parser.state == RESPONSE_INIT && !buffer_can_read(buffer)){
+        // No hace falta avanzar el buffer.
+        if(connection->command_response_parser.state == RESPONSE_INIT && !buffer_can_read(src)){
             connection->filter.state = FILTER_FINISHED_SENDING;
         }
     }

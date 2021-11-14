@@ -1,9 +1,7 @@
-COMPILER=gcc
 CFLAGS = -Wall -fsanitize=address -g -lpthread -pthread -D_POSIX_C_SOURCE=200112L
 SUBDIRS = utils parsers proxy manager
 # Ver si corresponde compilar con -o3 para optimizar
 COMMON =  ./utils/buffer.c ./utils/logger.c ./utils/selector.c ./utils/stm.c ./proxy/proxypop3nio.c ./utils/netutils.c ./parsers/hello_parser.c ./parsers/command_parser.c ./parsers/command_response_parser.c ./manager/sap.c ./manager/manager_server.c
-
 
 all: subdirs
 	@echo "Making client";
@@ -27,4 +25,4 @@ clean:
 	rm -r -f *.o  main report.tasks;
 
 
-.PHONY=all clean
+.PHONY=all clean parsers utils proxy

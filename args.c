@@ -26,7 +26,7 @@ port(const char *s)
 static void
 version(void)
 {
-    fprintf(stderr, "Pop3Filter version 0.0\n"
+    fprintf(stderr, "Pop3Filter version " DEFAULT_PROXY_POP3_VERSION_NUMBER "\n"
                     "ITBA Protocolos de Comunicación 2021/2 -- Grupo 6\n"
                     "AQUI VA LA LICENCIA\n");
 }
@@ -70,6 +70,7 @@ void parse_args(const int argc, char **argv, struct pop3_proxy_args *args)
     args->historic_connections = 0;
     args->current_connections = 0;
     args->bytes_transfered = 0;
+    args->version_number = DEFAULT_PROXY_POP3_VERSION_NUMBER;
 
     int c;
 

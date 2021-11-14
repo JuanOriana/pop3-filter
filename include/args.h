@@ -12,6 +12,8 @@
 #define DEFAULT_MNG_PORT 9090
 #define DEFAULT_BUFF_SIZE 2048
 #define DEFAULT_TIMEOUT 200
+#define DEFAULT_PROXY_POP3_VERSION_NUMBER "1.0"
+
 
 //CAMBIAR NOMBRE
 struct pop3_proxy_args
@@ -29,6 +31,7 @@ struct pop3_proxy_args
     unsigned short mng_port;
     char filter[1024];
     char error_file[1024];
+    char *version_number;
 };
 
 /**

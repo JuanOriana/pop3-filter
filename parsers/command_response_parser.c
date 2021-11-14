@@ -23,6 +23,7 @@ void command_response_parser_init(command_response_parser * parser) {
     parser->state     = RESPONSE_INIT;
     parser->line_size  = 0;
     parser->crlf_state = 0;
+    parser->is_starting_body = false;
     parser->command_interest = CMD_RETR;
 }
 
@@ -77,10 +78,10 @@ command_response_state command_response_parser_feed(command_response_parser * pa
                     parser->line_size     = -1;
                     parser->crlf_state    =  2;
                     // If is multiline AND we have a positive response, we continue, else we are absolutely done.
-                    if(current_command->indicator && current_command->type == parser->command_interest && current_command->is_multi)
-                        parser->state    = RESPONSE_INTEREST;
-                    else if(current_command->indicator && current_command->is_multi)
-                        parser->state    = RESPONSE_BODY;
+                    if(current_command->indicator && current_command->is_multi) {
+                        parser->is_starting_body = true;
+                        parser->state = RESPONSE_BODY;
+                    }
                     else {
                         parser->crlf_state    =  0;
                         parser->state    = RESPONSE_INIT;
@@ -91,6 +92,7 @@ command_response_state command_response_parser_feed(command_response_parser * pa
             break;
 
         case RESPONSE_BODY:
+            parser->is_starting_body = false;
             if (c == crlf_multi_msg[0]){
                 parser->crlf_state = 1;
             }
@@ -123,28 +125,6 @@ command_response_state command_response_parser_feed(command_response_parser * pa
             } else
                 parser->state = RESPONSE_ERROR;
             break;
-
-        case RESPONSE_INTEREST:
-            parser->state = RESPONSE_BODY;
-            if (c == crlf_multi_msg[0]){
-                parser->crlf_state = 1;
-            }
-            else if(c == crlf_multi_msg[1]) {
-                if(parser->crlf_state == 1) {
-                    parser->line_size  = -1;
-                    parser->crlf_state = 2;
-                } else
-                    parser->state = RESPONSE_ERROR;
-            }
-            else if(c == crlf_multi_msg[parser->crlf_state] && parser->crlf_state == 2) {
-                parser->state     = RESPONSE_MULTILINE_CRLF;
-                parser->crlf_state = 3;
-            }
-            else{
-                parser->crlf_state = 0;
-            }
-            break;
-
         case RESPONSE_ERROR:
             break;
 
@@ -184,7 +164,7 @@ command_response_state command_response_parser_consume_until(command_response_pa
         if(state == RESPONSE_ERROR) {
             *errored = true;
             break;
-        } else if((state == RESPONSE_INTEREST && interested) || (state == RESPONSE_INIT && to_new_command))
+        } else if((parser->is_starting_body && interested) || (state == RESPONSE_INIT && to_new_command))
             break;
     }
     return state;
