@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
     proxy4 = build_passive(ADDR_IPV4, PASSIVE_TCP);
     if (proxy4 < 0)
     {
-        log(DEBUG, "Unable to build passive socket in IPv4");
+        log(DEBUG, "Unable to build proxy passive socket in IPv4");
     }
     else if (selector_fd_set_nio(proxy4) == -1)
     {
@@ -61,7 +61,7 @@ int main(int argc, char *argv[])
 
     if (proxy6 < 0)
     {
-        log(DEBUG, "Unable to build passive socket in IPv6");
+        log(DEBUG, "Unable to build proxy passive socket in IPv6");
     }
     else if (selector_fd_set_nio(proxy6) == -1)
     {
@@ -250,7 +250,7 @@ selector_finally:
 
 static int build_passive(IP_REP_TYPE ip_type, passive_type passive_type)
 {
-    int opt = TRUE, result = -1;
+    int opt = TRUE;
     int client_socket;
     struct sockaddr_in address;
     struct sockaddr_in6 address_6;
@@ -258,6 +258,12 @@ static int build_passive(IP_REP_TYPE ip_type, passive_type passive_type)
     int sock_type = passive_type == PASSIVE_UDP ? SOCK_DGRAM : SOCK_STREAM;
     int port = passive_type == PASSIVE_TCP ? pop3_proxy_args.pop3_proxy_port : pop3_proxy_args.mng_port;
     char * stringed_addr = passive_type == PASSIVE_TCP ? pop3_proxy_args.pop3_proxy_addr : pop3_proxy_args.mng_addr;
+
+    // Si estamos escuchando en TODAS las interfaces, hacemos que se cumpla tambien en IPv6
+    // TODO: preguntar
+    if (strcmp(stringed_addr,"0.0.0.0") == 0 && ip_type == ADDR_IPV6 ){
+        stringed_addr = "0::0";
+    }
 
     if ((client_socket = socket(net_flag, sock_type, 0)) < 0) // Puede ser 0 por que cerramos el fd 0 para el proxy asi ganamos ud fd mas
     {
@@ -275,9 +281,9 @@ static int build_passive(IP_REP_TYPE ip_type, passive_type passive_type)
     {
         memset(&address, 0, sizeof(address));
         address.sin_family = AF_INET;
-        if ((result = inet_pton(AF_INET, stringed_addr, &address.sin_addr.s_addr)) <= 0)
+        if (inet_pton(AF_INET, stringed_addr, &address.sin_addr.s_addr) <= 0)
         {
-            log(ERROR, "Cant resolve IPv4 stringed address");
+            log(DEBUG, "String address doesn't translate to IPv4");
             close(client_socket);
             return -1;
         }
@@ -294,9 +300,9 @@ static int build_passive(IP_REP_TYPE ip_type, passive_type passive_type)
         memset(&address_6, 0, sizeof(address_6));
         address_6.sin6_family = AF_INET6;
         address_6.sin6_port = htons(port);
-        if ((result = inet_pton(AF_INET6, stringed_addr, &address_6.sin6_addr)) <= 0)
+        if (inet_pton(AF_INET6, stringed_addr, &address_6.sin6_addr) <= 0)
         {
-            log(ERROR, "Cant resolve IPv6 stringed address");
+            log(DEBUG, "String address doesn't translate to IPv6");
             close(client_socket);
             return -1;
         }
@@ -317,7 +323,7 @@ static int build_passive(IP_REP_TYPE ip_type, passive_type passive_type)
     }
     else
     {
-        log(INFO, "Waiting for %s TCP connections on socket %d\n",ip_type == ADDR_IPV4?"IPv4":"IPV6", client_socket);
+        log(INFO, "Waiting for %s %s connections on socket %d",ip_type == ADDR_IPV4?"IPv4":"IPV6", passive_type == PASSIVE_TCP?"proxy":"manager", client_socket);
     }
     return client_socket;
 }

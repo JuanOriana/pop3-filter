@@ -9,6 +9,7 @@
 #include <netinet/in.h>
 #include "../manager/include/sap.h"
 #include "../utils/include/logger.h"
+#include "../utils/include/netutils.h"
 #include "../include/args.h"
 
 #define MAXLINE 1024
@@ -93,17 +94,39 @@ int main(int argc, const char* argv[]) {
         exit(EXIT_FAILURE);
 
     }
-    int sockfd, valid_param,port;
+
+    int sockfd, valid_param,port, ip_type = ADDR_IPV4;
     struct sockaddr_in servaddr;
+    struct sockaddr_in6 servaddr6;
     char buffer_in[1024], buffer_out[1024], user_input[100], *command_name, *param;
     memset(buffer_in, 0, 1024);
     memset(buffer_out, 0, 1024);
 
+    memset(&servaddr, 0, sizeof(servaddr));
+    memset(&servaddr6, 0, sizeof(servaddr6));
+
+    if ((port = htons(atoi(argv[2]))) <= 0){
+        fprintf(stderr,"Puerto invalido");
+        exit(EXIT_FAILURE);
+    }
+
+    if (inet_pton(AF_INET, argv[1], &servaddr.sin_addr.s_addr) > 0)
+    {
+        servaddr.sin_family = AF_INET;
+        servaddr.sin_port = port;
+    }else if(inet_pton(AF_INET6, argv[1], &servaddr6.sin6_addr) > 0){
+        servaddr6.sin6_family = AF_INET6;
+        servaddr6.sin6_port = port;
+        ip_type = ADDR_IPV6;
+
+    }
+
     // Creating socket file descriptor
-    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) {
+    if ((sockfd = socket(ip_type == ADDR_IPV4 ? AF_INET:AF_INET6, SOCK_DGRAM, 0)) < 0 ) {
         perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
+
     struct timeval tv;
     tv.tv_sec = TIMEOUT_SEC;
     tv.tv_usec = 0;
@@ -111,17 +134,6 @@ int main(int argc, const char* argv[]) {
         perror("couldn't set timeout options");
         exit(EXIT_FAILURE);
     }
-
-    memset(&servaddr, 0, sizeof(servaddr));
-    if ((port = htons(atoi(argv[2]))) <= 0){
-        fprintf(stderr,"Puerto invalido");
-        exit(EXIT_FAILURE);
-    }
-
-    // Filling server information
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_port = port;
-    servaddr.sin_addr.s_addr = inet_addr(argv[1]);
 
     while(go_on) {
         command_name = param = NULL;
@@ -165,13 +177,23 @@ int main(int argc, const char* argv[]) {
             log(ERROR, "Error converting request to buffer");
         }
 
-        sendto(sockfd, buffer_out, n,
-               MSG_CONFIRM, (const struct sockaddr *) &servaddr,
-               sizeof(servaddr));
+        if (ip_type == ADDR_IPV4) {
+            sendto(sockfd, buffer_out, n,
+                   MSG_CONFIRM, (const struct sockaddr *) &servaddr,
+                   sizeof(servaddr));
 
-        n = recvfrom(sockfd, (char *) buffer_in, MAXLINE,
-                     MSG_WAITALL, (struct sockaddr *) &servaddr,
-                     &len);
+            n = recvfrom(sockfd, (char *) buffer_in, MAXLINE,
+                         MSG_WAITALL, (struct sockaddr *) &servaddr,
+                         &len);
+        }else{
+            sendto(sockfd, buffer_out, n,
+                   MSG_CONFIRM, (const struct sockaddr *) &servaddr6,
+                   sizeof(servaddr6));
+
+            n = recvfrom(sockfd, (char *) buffer_in, MAXLINE,
+                         MSG_WAITALL, (struct sockaddr *) &servaddr6,
+                         &len);
+        }
         if (n < 0)
         {
             printf("\033[0;31m");
