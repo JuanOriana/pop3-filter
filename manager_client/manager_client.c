@@ -11,6 +11,8 @@
 #include "../utils/include/logger.h"
 #include "../utils/include/netutils.h"
 #include "../include/args.h"
+#include <sys/time.h>
+#include <time.h>
 
 #define MAXLINE 2048
 #define USER_INPUT_SIZE 100
