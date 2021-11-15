@@ -21,6 +21,7 @@ static const char * pipelining_string = "PIPELINING";
 static const int    pipelining_string_size        = 10;
 
 static void command_response_init (command_response_parser * parser, const char c);
+static void command_response_indicator (command_response_parser * parser, const char c, command_instance * current_command);
 
 
 void command_response_parser_init(command_response_parser * parser) {
@@ -40,7 +41,7 @@ command_response_state command_response_parser_feed(command_response_parser * pa
 
     switch(parser->state) {
         case RESPONSE_INIT:
-            /*log(DEBUG, "EStoy en RESPONSE_INIT");
+            /*
             if(c == positive_indicator_msg[0])
                 parser->state = RESPONSE_INDICATOR_POS;
             else if(c == negative_indicator_msg[0])
@@ -51,13 +52,15 @@ command_response_state command_response_parser_feed(command_response_parser * pa
             break;
 
         case RESPONSE_INDICATOR_POS:
+            /*
             if(c != positive_indicator_msg[parser->line_size])
                 parser->state = RESPONSE_ERROR;
             else if(parser->line_size == positive_indicator_msg_size - 1) {
                 current_command->indicator = true;
                 parser->crlf_state = 0;
                 parser->state = RESPONSE_INDICATOR_MSG;
-            }
+            }*/
+            command_response_indicator(parser, c, current_command);
             break;
 
         case RESPONSE_INDICATOR_NEG:
@@ -193,11 +196,21 @@ command_response_state command_response_parser_consume_until(command_response_pa
 }
 
 static void command_response_init (command_response_parser * parser, const char c) {
-    log(DEBUG, "EStoy en RESPONSE_INIT");
     if(c == positive_indicator_msg[0])
         parser->state = RESPONSE_INDICATOR_POS;
     else if(c == negative_indicator_msg[0])
         parser->state = RESPONSE_INDICATOR_NEG;
     else
         parser->state = RESPONSE_ERROR;
+}
+
+static void command_response_indicator (command_response_parser * parser, const char c, command_instance * current_command) {
+    log(DEBUG, "EStoy en RESPONSE_INDICATOR_POS");
+    if(c != positive_indicator_msg[parser->line_size])
+        parser->state = RESPONSE_ERROR;
+    else if(parser->line_size == positive_indicator_msg_size - 1) {
+        current_command->indicator = true;
+        parser->crlf_state = 0;
+        parser->state = RESPONSE_INDICATOR_MSG;
+    }
 }
