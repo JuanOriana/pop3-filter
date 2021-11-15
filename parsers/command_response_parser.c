@@ -24,6 +24,7 @@ static void command_response_init (command_response_parser * parser, const char 
 static void command_response_indicator_pos (command_response_parser * parser, const char c, command_instance * current_command);
 static void command_response_indicator_neg (command_response_parser * parser, const char c, command_instance * current_command);
 static void command_response_indicator_msg (command_response_parser * parser, const char c);
+static void command_response_inline_crlf (command_response_parser * parser, const char c, command_instance * current_command);
 
 void command_response_parser_init(command_response_parser * parser) {
     parser->state     = RESPONSE_INIT;
@@ -86,8 +87,7 @@ command_response_state command_response_parser_feed(command_response_parser * pa
             break;
 
         case RESPONSE_INLINE_CRLF:
-            // I expect to complete a \r\n, then i evaluate if a multiline response follows or not
-            if(c == crlf_inline_msg[parser->crlf_state++]) {
+            /*if(c == crlf_inline_msg[parser->crlf_state++]) {
                 if(parser->crlf_state == crlf_inline_msg_size) {
                     // -1 because its incremented at the end of the run
                     parser->line_size     = -1;
@@ -104,7 +104,8 @@ command_response_state command_response_parser_feed(command_response_parser * pa
                     }
                 }
             } else
-                parser->state = RESPONSE_ERROR;
+                parser->state = RESPONSE_ERROR;*/
+            command_response_inline_crlf(parser, c, current_command);
             break;
 
         case RESPONSE_BODY:
@@ -230,9 +231,31 @@ static void command_response_indicator_neg (command_response_parser * parser, co
 
 static void command_response_indicator_msg (command_response_parser * parser, const char c) {
     // Read message till \r, then a \n is expected (always)
-    log(DEBUG, "EStoy en indicator_msg");
     if(c == crlf_inline_msg[0]) {
         parser->crlf_state = 1;
         parser->state = RESPONSE_INLINE_CRLF;
     }
+}
+
+static void command_response_inline_crlf (command_response_parser * parser, const char c, command_instance * current_command) {
+    // I expect to complete a \r\n, then i evaluate if a multiline response follows or not
+    log(DEBUG, "EStoy en inline crlf");
+    if(c == crlf_inline_msg[parser->crlf_state++]) {
+        if(parser->crlf_state == crlf_inline_msg_size) {
+            // -1 because its incremented at the end of the run
+            parser->line_size     = -1;
+            parser->crlf_state    =  2;
+            // If is multiline AND we have a positive response, we continue, else we are absolutely done.
+            if(current_command->indicator && current_command->is_multi) {
+                parser->is_starting_body = true;
+                parser->is_pipelining_possible = true;
+                parser->state = RESPONSE_BODY;
+            }
+            else {
+                parser->crlf_state    =  0;
+                parser->state    = RESPONSE_INIT;
+            }
+        }
+    } else
+        parser->state = RESPONSE_ERROR;
 }
