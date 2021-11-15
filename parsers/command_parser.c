@@ -23,17 +23,17 @@ typedef struct command_data {
 
 static const command_data all_command_data[] = {
         {
-                .type = CMD_USER, .name = "USER", .len = 4, .min_args = 1, .max_args = 512 - 7,  //un user puede contener espacios
+                .type = CMD_USER, .name = "USER", .len = 4, .min_args = 1, .max_args = MAX_MSG_SIZE - 4 - 2 - 1,  // largo comando + crlf + espacio incial
         } , {
-                .type = CMD_PASS, .name = "PASS", .len = 4, .min_args = 1, .max_args = 512 - 7,
+                .type = CMD_PASS, .name = "PASS", .len = 4, .min_args = 1, .max_args = MAX_MSG_SIZE - 4 - 2 - 1,
         } , {
-                .type = CMD_APOP, .name = "APOP", .len = 4, .min_args = 2, .max_args = 512 - 7,
+                .type = CMD_APOP, .name = "APOP", .len = 4, .min_args = 2, .max_args = MAX_MSG_SIZE - 4 - 2 - 1,
         } , {
                 .type = CMD_RETR, .name = "RETR", .len = 4, .min_args = 1, .max_args = 1,
         } , {
                 .type = CMD_LIST, .name = "LIST", .len = 4, .min_args = 0, .max_args = 1,
         } , {
-                .type = CMD_CAPA, .name = "CAPA", .len = 4, .min_args = 0, .max_args = 512 - 7,
+                .type = CMD_CAPA, .name = "CAPA", .len = 4, .min_args = 0, .max_args = MAX_MSG_SIZE - 4 - 2 - 1,
         } , {
                 .type = CMD_TOP,  .name = "TOP" , .len = 3, .min_args = 2, .max_args = 2,
         } , {
