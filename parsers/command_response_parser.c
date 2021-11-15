@@ -20,6 +20,8 @@ static const int    crlf_multi_msg_size        = 5;
 static const char * pipelining_string = "PIPELINING";
 static const int    pipelining_string_size        = 10;
 
+static void command_response_init (command_response_parser * parser, const char c);
+
 
 void command_response_parser_init(command_response_parser * parser) {
     parser->state     = RESPONSE_INIT;
@@ -38,12 +40,14 @@ command_response_state command_response_parser_feed(command_response_parser * pa
 
     switch(parser->state) {
         case RESPONSE_INIT:
+            /*log(DEBUG, "EStoy en RESPONSE_INIT");
             if(c == positive_indicator_msg[0])
                 parser->state = RESPONSE_INDICATOR_POS;
             else if(c == negative_indicator_msg[0])
                 parser->state = RESPONSE_INDICATOR_NEG;
             else
-                parser->state = RESPONSE_ERROR;
+                parser->state = RESPONSE_ERROR;*/
+            command_response_init(parser, c);
             break;
 
         case RESPONSE_INDICATOR_POS:
@@ -188,3 +192,12 @@ command_response_state command_response_parser_consume_until(command_response_pa
     return state;
 }
 
+static void command_response_init (command_response_parser * parser, const char c) {
+    log(DEBUG, "EStoy en RESPONSE_INIT");
+    if(c == positive_indicator_msg[0])
+        parser->state = RESPONSE_INDICATOR_POS;
+    else if(c == negative_indicator_msg[0])
+        parser->state = RESPONSE_INDICATOR_NEG;
+    else
+        parser->state = RESPONSE_ERROR;
+}
