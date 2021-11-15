@@ -38,6 +38,14 @@ static const command_data all_command_data[] = {
                 .type = CMD_TOP,  .name = "TOP" , .len = 3, .min_args = 2, .max_args = 2,
         } , {
                 .type = CMD_UIDL, .name = "UIDL", .len = 4, .min_args = 0, .max_args = 1,
+        }, {
+                .type = CMD_QUIT, .name = "QUIT", .len = 4, .min_args = 0, .max_args = 0,
+        }, {
+                .type = CMD_DELE, .name = "DELE", .len = 4, .min_args = 1, .max_args = 1,
+        }, {
+                .type = CMD_NOOP, .name = "NOOP", .len = 4, .min_args = 0, .max_args = 0,
+        }, {
+                .type = CMD_STAT, .name = "STAT", .len = 4, .min_args = 0, .max_args = 0,
         }
 };
 
@@ -191,7 +199,7 @@ static void command_args_state (command_parser * parser, const char c, bool * fi
     else if(c == '\r') {
         parser->crlf_state = 1;
         if(parser->args_size == 0 && (current_command->type == CMD_USER || current_command->type == CMD_APOP))
-            ((uint8_t *)current_command->data)[parser->state_size-1] = 0;     //username null terminated
+            ((uint8_t *)current_command->data)[parser->state_size > 0 ? parser->state_size-1: 0] = 0;     //username null terminated
         if(parser->state_size > 1)
             parser->args_size++;
         if(all_command_data[current_command->type].min_args <= parser->args_size && parser->args_size <= all_command_data[current_command->type].max_args) {

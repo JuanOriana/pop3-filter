@@ -8,7 +8,7 @@
 
 #define MAX_MSG_SIZE 512
 #define MAX_ARG_SIZE 40
-#define SIZE_OF_CMD_TYPES  8
+#define SIZE_OF_CMD_TYPES  12
 
 typedef enum command_t {
     CMD_NOT_RECOGNIZED     = -1,
@@ -20,6 +20,10 @@ typedef enum command_t {
     CMD_CAPA               =  5,
     CMD_TOP                =  6,
     CMD_UIDL               =  7,
+    CMD_QUIT               =  8,
+    CMD_DELE               =  9,
+    CMD_NOOP               =  10,
+    CMD_STAT               =  11,
 } command_t;
 
 typedef struct command_instance {
