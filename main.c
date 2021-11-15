@@ -183,7 +183,7 @@ int main(int argc, char *argv[])
         err_msg = NULL;
         ss = selector_select(selector);
         current_time = time(NULL);
-        if(difftime(current_time,last_used)>=TIMEOUT){
+        if(difftime(current_time,last_used)>=pop3_proxy_args.timeout){
         // log(DEBUG,"DIFFTIME = %f AND current = %ld and last %ld ",difftime(current_time,last_used),current_time,last_used);
             last_used = current_time;
             selector_check_time_out(selector);

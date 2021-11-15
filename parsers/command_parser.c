@@ -113,7 +113,7 @@ char * get_user(const command_instance command) {
     return NULL;
 }
 
-void command_delete(command_instance * command) {
+void  command_delete(command_instance * command) {
     if(command == NULL)
         return;
     if(command->data != NULL)
