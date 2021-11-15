@@ -26,6 +26,7 @@ static void command_response_indicator_neg (command_response_parser * parser, co
 static void command_response_indicator_msg (command_response_parser * parser, const char c);
 static void command_response_inline_crlf (command_response_parser * parser, const char c, command_instance * current_command);
 static void command_response_body (command_response_parser * parser, const char c);
+static void command_response_multiline_crlf (command_response_parser * parser, const char c);
 
 
 void command_response_parser_init(command_response_parser * parser) {
@@ -144,7 +145,7 @@ command_response_state command_response_parser_feed(command_response_parser * pa
             break;
 
         case RESPONSE_MULTILINE_CRLF:
-            if(c == crlf_multi_msg[parser->crlf_state++]) {
+            /*if(c == crlf_multi_msg[parser->crlf_state++]) {
                 if(parser->crlf_state == crlf_multi_msg_size) {
                     parser->state     = RESPONSE_INIT;
                     parser->line_size  = -1;
@@ -156,8 +157,10 @@ command_response_state command_response_parser_feed(command_response_parser * pa
                 parser->crlf_state = 0;
                 parser->state     = RESPONSE_BODY;
             } else
-                parser->state = RESPONSE_ERROR;
+                parser->state = RESPONSE_ERROR;*/
+            command_response_multiline_crlf(parser, c);
             break;
+
         case RESPONSE_ERROR:
             break;
 
@@ -263,7 +266,6 @@ static void command_response_inline_crlf (command_response_parser * parser, cons
 }
 
 static void command_response_body (command_response_parser * parser, const char c) {
-    log(DEBUG, "EStoy en body");
     parser->is_starting_body = false;
     // CRLF HANDLING
     if (c == crlf_multi_msg[0]){
@@ -293,4 +295,21 @@ static void command_response_body (command_response_parser * parser, const char 
             parser->is_pipelining_possible = false;
         }
     }
+}
+
+static void command_response_multiline_crlf (command_response_parser * parser, const char c) {
+    log(DEBUG, "EStoy en multiline crlf");
+    if(c == crlf_multi_msg[parser->crlf_state++]) {
+        if(parser->crlf_state == crlf_multi_msg_size) {
+            parser->state     = RESPONSE_INIT;
+            parser->line_size  = -1;
+            parser->crlf_state = 0;
+        }
+    } else if(parser->crlf_state == crlf_multi_msg_size - 1) {
+        parser->is_pipelining_possible = true;
+        parser->line_size  = -1;
+        parser->crlf_state = 0;
+        parser->state     = RESPONSE_BODY;
+    } else
+        parser->state = RESPONSE_ERROR;
 }
