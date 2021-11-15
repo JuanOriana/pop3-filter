@@ -1,13 +1,13 @@
 CFLAGS = -Wall -fsanitize=address -g -lpthread -pthread -D_POSIX_C_SOURCE=200112L
 SUBDIRS = utils parsers proxy manager
 # Ver si corresponde compilar con -o3 para optimizar
-COMMON =  ./utils/buffer.c ./utils/logger.c ./utils/selector.c ./utils/stm.c ./proxy/proxypop3nio.c ./utils/netutils.c ./parsers/hello_parser.c ./parsers/command_parser.c ./parsers/command_response_parser.c ./manager/sap.c ./manager/manager_server.c
+COMMON =  ./utils/buffer.c ./utils/logger.c ./utils/selector.c ./utils/stm.c ./proxy/proxypop3nio.c ./utils/netutils.c ./parsers/hello_parser.c ./parsers/command_parser.c ./parsers/command_response_parser.c ./manager/sap.c ./manager/manager_server.c ./parsers/filter_parser.c
 
 all: subdirs
 	@echo "Making client";
-	$(COMPILER) $(CFLAGS) -o main main.c args.c $(COMMON)
+	$(CC) $(CFLAGS) -o main main.c args.c $(COMMON)
 	@echo "Making client";
-	$(COMPILER) $(CFLAGS) -o ./manager_client/client ./manager_client/manager_client.c args.c $(COMMON)
+	$(CC) $(CFLAGS) -o ./manager_client/client ./manager_client/manager_client.c args.c $(COMMON)
 
 subdirs:
 	$(CC) $(CFLAGS) -I./include -c args.c

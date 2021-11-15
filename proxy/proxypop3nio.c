@@ -246,7 +246,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
 static void connection_destroy(connection *connection);
 static unsigned start_connection_with_origin(fd_selector selector, connection *connection);
 static void *dns_resolve_blocking(void *data);
-static void *connection_close_select(struct selector_key *key);
+//static void *connection_close_select(struct selector_key *key);
 
 
 void proxy_passive_accept(struct selector_key *key)
@@ -372,6 +372,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
         read_buf = new_connection->read_buffer;
         write_buf = new_connection->write_buffer;
         filter_buf = new_connection->filter_buffer;
+        filter_parser_buffer = new_connection->filter_parser_buffer;
         buffer_reset(read_buf);
         buffer_reset(write_buf);
         buffer_reset(filter_buf);
@@ -952,7 +953,10 @@ static unsigned analize_process_response(connection * connection, buffer * buffe
     size_t size;
     uint8_t * ptr = buffer_read_ptr(buffer,&size);
     const command_response_state state = command_response_parser_consume_until(&connection->command_response_parser, 
-    ptr,size, connection->current_command, interest_retr, to_new_command, &errored); 
+    ptr,size, connection->current_command, interest_retr, to_new_command, &errored);
+
+    log(DEBUG,"PIPELINING: %s",connection->command_response_parser.includes_pipelining?"true":"false");
+
     if(errored) { // Esto corresponde a que el origin devuelva una respuesta mal formateada (?)
         connection->error_data.err_msg = "-ERR Unexpected event\r\n";
         ret = ERROR_W_MESSAGE_ST;
@@ -1142,7 +1146,7 @@ static fd_interest client_compute_interest(struct selector_key *key)
     connection *connection = ATTACHMENT(key);
     struct copy *copy = &connection->copy_client;
     
-    bool writeFromOrigin = buffer_can_read(copy->write_buffer) && (!connection->filter.state == FILTER_START ||connection->filter.state == FILTER_CLOSE); //TODO: REVISAR ESTO ANTES NO SE NEGABA EL FILTER_START// Todavia no esta el filtro 
+    bool writeFromOrigin = buffer_can_read(copy->write_buffer) && (!(connection->filter.state == FILTER_START) ||connection->filter.state == FILTER_CLOSE); //TODO: REVISAR ESTO ANTES NO SE NEGABA EL FILTER_START// Todavia no esta el filtro
 
     bool writeFromFilter = buffer_can_read(connection->copy_filter.read_buffer) && (connection->filter.state == FILTER_WORKING ||connection->filter.state == FILTER_FINISHED_SENDING);
 
@@ -1297,7 +1301,7 @@ static unsigned write_to_filter(struct selector_key *key,struct copy *copy){
     ret_value = analize_process_response(connection,src,false,true);
 
     // Filtro y limpio la respuesta para mandar sin configuracion de pop3 al filter
-    filter_parser_state state = filter_parser_consume(&connection->filter_skip_parser,src,dest,true,connection->filter.start_message);
+    filter_parser_consume(&connection->filter_skip_parser,src,dest,true,connection->filter.start_message);
 
     // Le mando al filter el resultado de limpiar la respuesta
     uint8_t *ptr_dest = buffer_read_ptr(dest, &max_size_to_write);

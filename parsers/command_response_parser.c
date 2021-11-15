@@ -17,6 +17,8 @@ static const char * crlf_inline_msg               = "\r\n";
 static const int    crlf_inline_msg_size           = 2;
 static const char * crlf_multi_msg            = "\r\n.\r\n";
 static const int    crlf_multi_msg_size        = 5;
+static const char * pipelining_string = "PIPELINING";
+static const int    pipelining_string_size        = 10;
 
 
 void command_response_parser_init(command_response_parser * parser) {
@@ -24,6 +26,8 @@ void command_response_parser_init(command_response_parser * parser) {
     parser->line_size  = 0;
     parser->crlf_state = 0;
     parser->is_starting_body = false;
+    parser->includes_pipelining = false;
+    parser->is_pipelining_possible = true;
     parser->command_interest = CMD_RETR;
 }
 
@@ -74,12 +78,13 @@ command_response_state command_response_parser_feed(command_response_parser * pa
             // I expect to complete a \r\n, then i evaluate if a multiline response follows or not
             if(c == crlf_inline_msg[parser->crlf_state++]) {
                 if(parser->crlf_state == crlf_inline_msg_size) {
-                    // -1 because its incremented at the end of the
+                    // -1 because its incremented at the end of the run
                     parser->line_size     = -1;
                     parser->crlf_state    =  2;
                     // If is multiline AND we have a positive response, we continue, else we are absolutely done.
                     if(current_command->indicator && current_command->is_multi) {
                         parser->is_starting_body = true;
+                        parser->is_pipelining_possible = true;
                         parser->state = RESPONSE_BODY;
                     }
                     else {
@@ -93,13 +98,15 @@ command_response_state command_response_parser_feed(command_response_parser * pa
 
         case RESPONSE_BODY:
             parser->is_starting_body = false;
+            // CRLF HANDLING
             if (c == crlf_multi_msg[0]){
                 parser->crlf_state = 1;
             }
             else if(c == crlf_multi_msg[1]) {
                 if(parser->crlf_state == 1) {
-                    parser->line_size  = -1;
                     parser->crlf_state = 2;
+                    parser->is_pipelining_possible = true;
+                    parser->line_size = -1;
                 } else
                     parser->state = RESPONSE_ERROR;
             }
@@ -107,8 +114,17 @@ command_response_state command_response_parser_feed(command_response_parser * pa
                 parser->state     = RESPONSE_MULTILINE_CRLF;
                 parser->crlf_state = 3;
             }
+            // We are not parsing CRLF
             else{
                 parser->crlf_state = 0;
+                if(!parser->includes_pipelining && parser->is_pipelining_possible && toupper(c) == pipelining_string[parser->line_size]){
+                    if (parser->line_size == pipelining_string_size-1){
+                        parser->includes_pipelining = true;
+                    }
+                }
+                else{
+                    parser->is_pipelining_possible = false;
+                }
             }
             break;
 
@@ -120,8 +136,10 @@ command_response_state command_response_parser_feed(command_response_parser * pa
                     parser->crlf_state = 0;
                 }
             } else if(parser->crlf_state == crlf_multi_msg_size - 1) {
-                parser->state     = RESPONSE_BODY;
+                parser->is_pipelining_possible = true;
+                parser->line_size  = -1;
                 parser->crlf_state = 0;
+                parser->state     = RESPONSE_BODY;
             } else
                 parser->state = RESPONSE_ERROR;
             break;
