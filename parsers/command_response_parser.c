@@ -21,8 +21,8 @@ static const char * pipelining_string = "PIPELINING";
 static const int    pipelining_string_size        = 10;
 
 static void command_response_init (command_response_parser * parser, const char c);
-static void command_response_indicator (command_response_parser * parser, const char c, command_instance * current_command);
-
+static void command_response_indicator_pos (command_response_parser * parser, const char c, command_instance * current_command);
+static void command_response_indicator_neg (command_response_parser * parser, const char c, command_instance * current_command);
 
 void command_response_parser_init(command_response_parser * parser) {
     parser->state     = RESPONSE_INIT;
@@ -60,17 +60,19 @@ command_response_state command_response_parser_feed(command_response_parser * pa
                 parser->crlf_state = 0;
                 parser->state = RESPONSE_INDICATOR_MSG;
             }*/
-            command_response_indicator(parser, c, current_command);
+            command_response_indicator_pos(parser, c, current_command);
             break;
 
         case RESPONSE_INDICATOR_NEG:
+            /*
             if(c != negative_indicator_msg[parser->line_size])
                 parser->state = RESPONSE_ERROR;
             else if(parser->line_size == negative_indicator_msg_size - 1) {
                 current_command->indicator = false;
                 parser->crlf_state = 0;
                 parser->state = RESPONSE_INDICATOR_MSG;
-            }
+            }*/
+            command_response_indicator_neg(parser, c, current_command);
             break;
 
         case RESPONSE_INDICATOR_MSG:
@@ -204,8 +206,7 @@ static void command_response_init (command_response_parser * parser, const char 
         parser->state = RESPONSE_ERROR;
 }
 
-static void command_response_indicator (command_response_parser * parser, const char c, command_instance * current_command) {
-    log(DEBUG, "EStoy en RESPONSE_INDICATOR_POS");
+static void command_response_indicator_pos (command_response_parser * parser, const char c, command_instance * current_command) {
     if(c != positive_indicator_msg[parser->line_size])
         parser->state = RESPONSE_ERROR;
     else if(parser->line_size == positive_indicator_msg_size - 1) {
@@ -213,4 +214,16 @@ static void command_response_indicator (command_response_parser * parser, const 
         parser->crlf_state = 0;
         parser->state = RESPONSE_INDICATOR_MSG;
     }
+}
+
+static void command_response_indicator_neg (command_response_parser * parser, const char c, command_instance * current_command) {
+    log(DEBUG, "EStoy en RESPONSE_INDICATOR_NEG");
+    if(c != negative_indicator_msg[parser->line_size])
+        parser->state = RESPONSE_ERROR;
+    else if(parser->line_size == negative_indicator_msg_size - 1) {
+        current_command->indicator = false;
+        parser->crlf_state = 0;
+        parser->state = RESPONSE_INDICATOR_MSG;
+    }
+
 }
