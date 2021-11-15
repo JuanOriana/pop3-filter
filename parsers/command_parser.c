@@ -21,7 +21,6 @@ typedef struct command_data {
                 ||  (command->type == CMD_RETR && args_size == 1)         \
                 ||  (command->type == CMD_UIDL && args_size == 0))
 
-
 static const command_data all_command_data[] = {
         {
                 .type = CMD_USER, .name = "USER", .len = 4, .min_args = 1, .max_args = 512 - 7,  //un user puede contener espacios
@@ -42,9 +41,16 @@ static const command_data all_command_data[] = {
         }
 };
 
+typedef void (*command_handler_f) ( command_parser *, char, bool *, command_instance *);
+
+static void command_type_state (command_parser * parser, char c, bool * finished, command_instance * current_command);
+static void command_args_state (command_parser * parser, char c, bool * finished, command_instance * current_command);
+static void command_crlf_state (command_parser * parser, char c, bool * finished, command_instance * current_command);
+static void command_error_state (command_parser * parser, char c, bool * finished, command_instance * current_command);
+
+command_handler_f command_handlers[] = {command_type_state,command_args_state,command_crlf_state,command_error_state};
 
 static void command_init(command_instance * command);
-
 static void handle_command_parsed(command_instance * current_command, command_parser * parser, bool * finished, bool not_match);
 
 void command_parser_init(command_parser * parser) {
@@ -66,25 +72,13 @@ command_state command_parser_feed(command_parser * parser, const char c, bool * 
             parser->invalid_type[i] = false;
     }
 
-    switch(parser->state) {
-        case COMMAND_TYPE:
-            command_type_state(parser, c, finished, current_command);
-            break;
-
-        case COMMAND_ARGS:
-            command_args_state(parser, c, finished, current_command);
-            break;
-
-        case COMMAND_CRLF:
-            command_crlf_state(parser, c, finished, current_command);
-            break;
-
-        case COMMAND_ERROR:
-            command_error_state(parser, c, finished, current_command);
-            break;
-        default:
-            log(ERROR,"Command parser not reconize state: %d", parser->state);
+    if (parser->state > COMMAND_ERROR){
+        log(ERROR,"Command parser not reconize state: %d", parser->state);
     }
+    else{
+        command_handlers[parser->state](parser, c, finished, current_command);
+    }
+
     if(parser->line_size++ == MAX_MSG_SIZE || (parser->state == COMMAND_ARGS && parser->state_size == MAX_ARG_SIZE))
         parser->state = COMMAND_ERROR;
     return parser->state;
@@ -145,7 +139,7 @@ static void handle_command_parsed(command_instance * current_command, command_pa
 }
 
 // modules for command_parser_feed's switch
-static inline void command_type_state (command_parser * parser, const char c, bool * finished, command_instance * current_command) {
+static void command_type_state (command_parser * parser, const char c, bool * finished, command_instance * current_command) {
     if(c != '\n') {
         for(int i = 0; i < SIZE_OF_CMD_TYPES; i++) {
             if(!parser->invalid_type[i]) {
@@ -171,7 +165,8 @@ static inline void command_type_state (command_parser * parser, const char c, bo
         handle_command_parsed(current_command, parser, finished, true);
 }
 
-static inline void command_args_state (command_parser * parser, const char c, bool * finished, command_instance * current_command) {
+static void command_args_state (command_parser * parser, const char c, bool * finished, command_instance * current_command) {
+    // Espacio indica nuevo argumento
     if(c == ' ') {
         if(parser->args_size == all_command_data[current_command->type].max_args)
             parser->state = COMMAND_ERROR;
@@ -181,7 +176,9 @@ static inline void command_args_state (command_parser * parser, const char c, bo
             parser->state_size = 1;
             parser->args_size++;
         }
-    } else if(c != '\r' && c != '\n') {
+    }
+    // Leyendo un argumento
+    else if(c != '\r' && c != '\n') {
         parser->crlf_state = 0;
         if(parser->state_size == 0)
             parser->state = COMMAND_ERROR;
@@ -190,7 +187,8 @@ static inline void command_args_state (command_parser * parser, const char c, bo
                 ((uint8_t *)current_command->data)[parser->state_size-1] = c;
             parser->state_size++;
         }
-    } else if(c == '\r') {
+    }
+    else if(c == '\r') {
         parser->crlf_state = 1;
         if(parser->args_size == 0 && (current_command->type == CMD_USER || current_command->type == CMD_APOP))
             ((uint8_t *)current_command->data)[parser->state_size-1] = 0;     //username null terminated
@@ -200,7 +198,9 @@ static inline void command_args_state (command_parser * parser, const char c, bo
             parser->state     = COMMAND_CRLF;
         } else
             parser->state     = COMMAND_ERROR;
-    } else if(c == '\n' && parser->crlf_state == 1) {
+    }
+    // Es imposible que c != '\n' si llegamos aca, es un tema de claridad
+    else if(c == '\n' && parser->crlf_state == 1) {
         parser->crlf_state = 2;
         if(parser->args_size == 0 && (current_command->type == CMD_USER || current_command->type == CMD_APOP))
             ((uint8_t *)current_command->data)[parser->state_size-1] = 0;     //username null terminated
@@ -216,7 +216,7 @@ static inline void command_args_state (command_parser * parser, const char c, bo
     }
 }
 
-static inline void command_crlf_state (command_parser * parser, const char c, bool * finished, command_instance * current_command) {
+static void command_crlf_state (command_parser * parser, const char c, bool * finished, command_instance * current_command) {
     if(c == '\r' && parser->crlf_state == 0) {
         parser->crlf_state = 1;
     } else if(c == '\n' && parser->crlf_state == 1){
@@ -226,7 +226,7 @@ static inline void command_crlf_state (command_parser * parser, const char c, bo
     }
 }
 
-static inline void command_error_state (command_parser * parser, const char c, bool * finished, command_instance * current_command) {
+static void command_error_state (command_parser * parser, const char c, bool * finished, command_instance * current_command) {
     if(c == '\r' && parser->crlf_state == 0) {
         parser->crlf_state = 1;
     } else if(c == '\n'){
