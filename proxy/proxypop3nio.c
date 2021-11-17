@@ -960,7 +960,6 @@ static unsigned analize_process_response(connection * connection, buffer * buffe
     const command_response_state state = command_response_parser_consume_until(&connection->command_response_parser, 
     ptr,size, connection->current_command, interest_retr, to_new_command, &errored);
 
-    log(DEBUG,"PIPELINING: %s",connection->command_response_parser.includes_pipelining?"true":"false");
 
     if(errored) { // Esto corresponde a que el origin devuelva una respuesta mal formateada (?)
         connection->error_data.err_msg = "-ERR Unexpected event\r\n";
@@ -972,6 +971,16 @@ static unsigned analize_process_response(connection * connection, buffer * buffe
     }
 
     if(state == RESPONSE_INIT) {
+        if (connection->current_command->type == CMD_CAPA && !connection->command_response_parser.includes_pipelining){
+            if (size < 3){
+                log(ERROR,"Can't add pipelining to response");
+            }
+            else {
+                // Remplazo ./r/n por PIPELINING./r/n
+                memcpy(ptr + size - 3, "PIPELINING\r\n.\r\n", 15);
+                buffer_write_adv(buffer, 12);
+            }
+        }
         analize_response(connection);
         connection->is_awaiting_response_from_origin = false;
     }
