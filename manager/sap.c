@@ -177,7 +177,7 @@ static void copy_data_to_buff(sap_data_type data, data_type_correspondence data_
             memcpy(buffer, &to_copy, sizeof(uint16_t));
             break;
         case SAP_LONG:
-            to_copy = htons(data.sap_long);
+            to_copy = htonl(data.sap_long);
             memcpy(buffer, &to_copy, sizeof(uint32_t));
             break;
         case SAP_STRING:
