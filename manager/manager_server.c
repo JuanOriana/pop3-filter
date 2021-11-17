@@ -20,6 +20,7 @@ void build_blank_response(sap_response * new_response, sap_request new_request);
 void build_single_response(sap_response * new_response,sap_request new_request,uint8_t single_data);
 void build_short_response(sap_response * new_response,sap_request new_request,uint16_t short_data);
 void build_long_response(sap_response * new_response,sap_request new_request,uint16_t long_data);
+void build_string_response(sap_response * new_response,sap_request new_request,char* string);
 
 typedef void (*resp_handler_fun_type) (sap_response *, sap_request);
 
@@ -112,11 +113,17 @@ void build_long_response(sap_response * new_response,sap_request new_request,uin
     new_response->data.sap_long= long_data;
 }
 
+void build_string_response(sap_response * new_response,sap_request new_request,char* string){
+    build_blank_response(new_response,new_request);
+    strcpy(new_response->data.string,string);
+}
+
 void stats_resp(sap_response * new_response, sap_request new_request){
     if (new_request.data.sap_single > STAT_TYPE_COUNT){
         build_blank_response_with_status(new_response,new_request,SC_COMMAND_INVALID_ARGS);
         return;
     }
+
     build_blank_response(new_response,new_request);
     switch (new_request.data.sap_single) {
         case SAP_STAT_HISTORIC:
@@ -132,8 +139,7 @@ void stats_resp(sap_response * new_response, sap_request new_request){
 }
 
 void get_buff_size_resp(sap_response * new_response, sap_request new_request){
-    build_blank_response(new_response,new_request);
-    new_response->data.sap_short = pop3_proxy_args.buff_size;
+    build_short_response(new_response,new_request,pop3_proxy_args.buff_size);
 }
 
 void set_buff_size_resp(sap_response * new_response, sap_request new_request){
@@ -142,8 +148,7 @@ void set_buff_size_resp(sap_response * new_response, sap_request new_request){
 }
 
 void get_timeout_resp(sap_response * new_response, sap_request new_request){
-    build_blank_response(new_response,new_request);
-    new_response->data.sap_single = pop3_proxy_args.timeout;
+    build_single_response(new_response,new_request,pop3_proxy_args.timeout);
 }
 
 void set_timeout_resp(sap_response * new_response, sap_request new_request){
@@ -152,21 +157,20 @@ void set_timeout_resp(sap_response * new_response, sap_request new_request){
 }
 
 void get_error_resp(sap_response * new_response, sap_request new_request){
-    build_blank_response(new_response,new_request);
-    memcpy(new_response->data.string,pop3_proxy_args.error_file, strlen(pop3_proxy_args.error_file));
+    build_string_response(new_response,new_request,pop3_proxy_args.error_file);
 }
 
 void set_error_resp(sap_response * new_response, sap_request new_request){
     build_blank_response(new_response,new_request);
-    memcpy(pop3_proxy_args.error_file,new_request.data.string, strlen(new_request.data.string));
+    strcpy(pop3_proxy_args.error_file,new_request.data.string);
 }
 
 void get_filter_resp(sap_response * new_response, sap_request new_request){
-    build_blank_response(new_response,new_request);
-    memcpy(new_response->data.string,pop3_proxy_args.filter, strlen(pop3_proxy_args.filter));
+    build_string_response(new_response,new_request,pop3_proxy_args.filter);
+
 }
 
 void set_filter_resp(sap_response * new_response, sap_request new_request){
     build_blank_response(new_response,new_request);
-    memcpy(pop3_proxy_args.filter,new_request.data.string, strlen(new_request.data.string));
+    strcpy(pop3_proxy_args.filter,new_request.data.string);
 }

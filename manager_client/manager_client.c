@@ -60,6 +60,8 @@ void build_blank_request(sap_request * new_request, op_code op_code);
 void build_single_request(sap_request * new_request,op_code op_code,uint8_t single_data);
 void build_short_request(sap_request * new_request,op_code op_code,uint16_t short_data);
 void build_long_request(sap_request * new_request,op_code op_code,uint16_t long_data);
+void build_string_request(sap_request * new_request,op_code op_code, char* string );
+
 int historic_connections_req(sap_request * new_request, char * param);
 int current_connections_req(sap_request * new_request, char * param);
 int transfered_bytes_req(sap_request * new_request, char * param);
@@ -102,8 +104,6 @@ int main(int argc, const char* argv[]) {
     struct sockaddr_in6 servaddr6;
     char buffer_in[MAXLINE], buffer_out[MAXLINE], user_input[USER_INPUT_SIZE], *command_name, *param;
 
-    memset(buffer_in, 0, MAXLINE);
-    memset(buffer_out, 0, MAXLINE);
     memset(&servaddr, 0, sizeof(servaddr));
     memset(&servaddr6, 0, sizeof(servaddr6));
 
@@ -138,8 +138,9 @@ int main(int argc, const char* argv[]) {
     }
 
     while(go_on) {
-        command_name = param = NULL;
         memset(user_input, 0, USER_INPUT_SIZE);
+
+        command_name = param = NULL;
         printf("\033[0;32m");
         printf("sap_client >> ");
         printf("\033[0m");
@@ -176,6 +177,10 @@ int main(int argc, const char* argv[]) {
         int n;
         socklen_t len;
 
+        memset(buffer_in, 0, MAXLINE);
+        memset(buffer_out, 0, MAXLINE);
+
+
         if (sap_request_to_buffer(buffer_out, &request, &n) < 0) {
             log(ERROR, "Error converting request to buffer");
         }
@@ -210,7 +215,6 @@ int main(int argc, const char* argv[]) {
 
         if (sap_buffer_to_response(buffer_in, &response) < 0) {
             log(ERROR, "Error converting buffer to response");
-
         }
 
         handle_response(response,client_commands[i].success_message);
@@ -243,9 +247,9 @@ void build_long_request(sap_request * new_request,op_code op_code,uint16_t long_
     new_request->data.sap_long= long_data;
 }
 
-void build_string_request(sap_request * new_request,op_code op_code, char* string, int len ){
+void build_string_request(sap_request * new_request,op_code op_code, char* string ){
     build_blank_request(new_request,op_code);
-    memcpy(new_request->data.string,string,len);
+    strcpy(new_request->data.string,string);
 }
 
 int historic_connections_req(sap_request * new_request, char * param){
@@ -304,7 +308,7 @@ int set_error_req(sap_request * new_request, char * param){
     if (param == NULL){
         return -1;
     }
-    build_string_request(new_request,OP_SET_ERROR_FILE,param,strlen(param));
+    build_string_request(new_request,OP_SET_ERROR_FILE,param);
     return 0;
 }
 
@@ -317,7 +321,7 @@ int set_filter_req(sap_request * new_request, char * param){
     if (param == NULL){
         return -1;
     }
-    build_string_request(new_request,OP_SET_FILTER,param, strlen(param));
+    build_string_request(new_request,OP_SET_FILTER,param);
     return 0;
 }
 

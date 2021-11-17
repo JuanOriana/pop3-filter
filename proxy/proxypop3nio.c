@@ -352,18 +352,18 @@ struct connection *new_connection(int client_fd, address_representation origin_a
         {
             return NULL;
         }
-        direct_buff = malloc(BUFFSIZE);
-        direct_buff_filter = malloc(BUFFSIZE);
-        direct_buff_origin = malloc(BUFFSIZE);
-        direct_filter_parser_buffer = malloc(BUFFSIZE);
+        direct_buff = malloc(pop3_proxy_args.buff_size);
+        direct_buff_filter = malloc(pop3_proxy_args.buff_size);
+        direct_buff_origin = malloc(pop3_proxy_args.buff_size);
+        direct_filter_parser_buffer = malloc(pop3_proxy_args.buff_size);
         read_buf = malloc(sizeof(buffer));
-        buffer_init(read_buf, BUFFSIZE, direct_buff);
+        buffer_init(read_buf, pop3_proxy_args.buff_size, direct_buff);
         write_buf = malloc(sizeof(buffer));
-        buffer_init(write_buf, BUFFSIZE, direct_buff_origin); // Errores?
+        buffer_init(write_buf, pop3_proxy_args.buff_size, direct_buff_origin); // Errores?
         filter_buf = malloc(sizeof(buffer));
-        buffer_init(filter_buf, BUFFSIZE, direct_buff_filter); // Errores?
+        buffer_init(filter_buf, pop3_proxy_args.buff_size, direct_buff_filter); // Errores?
         filter_parser_buffer = malloc(sizeof(buffer));
-        buffer_init(filter_parser_buffer, BUFFSIZE, direct_filter_parser_buffer); 
+        buffer_init(filter_parser_buffer, pop3_proxy_args.buff_size, direct_filter_parser_buffer);
     }
     else
     {
@@ -491,7 +491,9 @@ static unsigned on_connection_ready(struct selector_key *key)
         struct sockaddr_storage *origin = &connection->origin_address_representation.addr.address_storage;
         sockaddr_to_human(connection->origin_addr_humanized, ADDR_STRING_BUFF_SIZE, origin);
         log(INFO, "Connection successful. Client Address: %s; Origin Address: %s.", connection->client_addr_humanized, connection->origin_addr_humanized);
-        ret = HELLO; 
+        ret = HELLO;
+        pop3_proxy_args.current_connections++;
+        pop3_proxy_args.historic_connections++;
     }
     return ret;
 }
@@ -650,6 +652,8 @@ static void connection_destroy_referenced(connection *connection)
     }
     else if (connection->references == 1)
     {
+        if (pop3_proxy_args.current_connections > 0)
+            pop3_proxy_args.current_connections--;
         if (connection != NULL)
         {
             if (connection_pool_size < MAX_POOL)
@@ -821,6 +825,7 @@ static void filter_init(struct selector_key * key){
 
         set_enviroment_variables(connection); // Seteamos las variables de entorno que algunos filters necesitan
 
+        // TODO: que pasa si cambia el filter en el medio?
         if(execl("/bin/sh","sh","-c",pop3_proxy_args.filter,(char * )0) < 0){
             log(ERROR,"Executing command");
             close(filter->read_pipe[0]);
@@ -955,7 +960,6 @@ static unsigned analize_process_response(connection * connection, buffer * buffe
     const command_response_state state = command_response_parser_consume_until(&connection->command_response_parser, 
     ptr,size, connection->current_command, interest_retr, to_new_command, &errored);
 
-    log(DEBUG,"PIPELINING: %s",connection->command_response_parser.includes_pipelining?"true":"false");
 
     if(errored) { // Esto corresponde a que el origin devuelva una respuesta mal formateada (?)
         connection->error_data.err_msg = "-ERR Unexpected event\r\n";
@@ -967,6 +971,16 @@ static unsigned analize_process_response(connection * connection, buffer * buffe
     }
 
     if(state == RESPONSE_INIT) {
+        if (connection->current_command->type == CMD_CAPA && !connection->command_response_parser.includes_pipelining){
+            if (size < 3){
+                log(ERROR,"Can't add pipelining to response");
+            }
+            else {
+                // Remplazo ./r/n por PIPELINING./r/n
+                memcpy(ptr + size - 3, "PIPELINING\r\n.\r\n", 15);
+                buffer_write_adv(buffer, 12);
+            }
+        }
         analize_response(connection);
         connection->is_awaiting_response_from_origin = false;
     }

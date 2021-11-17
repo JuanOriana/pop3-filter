@@ -144,8 +144,6 @@ int sap_response_to_buffer(char* buffer,sap_response * response, int* size){
 
 static void assign_proper_data_type(sap_data_type * data, data_type_correspondence data_type_enum, char * buffer){
 
-    int len;
-
     switch (data_type_enum) {
         case SAP_SINGLE:
             data->sap_single = *((uint8_t *) buffer);
@@ -157,17 +155,17 @@ static void assign_proper_data_type(sap_data_type * data, data_type_corresponden
             data->sap_long = ntohl(*((uint32_t *)buffer));
             break;
         case SAP_STRING:
-            len = strlen(buffer);
-            memcpy(data->string, buffer, len);
+            strcpy(data->string, buffer);
             break;
         case SAP_BLANK:
+        default:
             data->string[0] = 0;
     }
 }
 
 static void copy_data_to_buff(sap_data_type data, data_type_correspondence data_type_enum, char* buffer){
 
-    int to_copy, len;
+    int to_copy;
 
     switch (data_type_enum) {
         case SAP_SINGLE:
@@ -179,12 +177,11 @@ static void copy_data_to_buff(sap_data_type data, data_type_correspondence data_
             memcpy(buffer, &to_copy, sizeof(uint16_t));
             break;
         case SAP_LONG:
-            to_copy = htons(data.sap_long);
+            to_copy = htonl(data.sap_long);
             memcpy(buffer, &to_copy, sizeof(uint32_t));
             break;
         case SAP_STRING:
-            len = strlen(data.string);
-            memcpy(buffer, data.string, len);
+            strcpy(buffer, data.string);
             break;
         case SAP_BLANK:
         default:
