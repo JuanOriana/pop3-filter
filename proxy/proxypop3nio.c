@@ -805,11 +805,12 @@ static void filter_init(struct selector_key * key){
         log(ERROR,"Error when creating writing pipe for filter");
     }
     buffer_reset(connection->filter_buffer);
+    errno=0;
     if((pid = fork()) == 0){
         filter->slave_proc_pid = -1;
 
         close(STDERR_FILENO);
-        open(pop3_proxy_args.error_file, O_WRONLY | O_APPEND);
+        open(pop3_proxy_args.error_file, O_CREAT | O_WRONLY | O_APPEND);
 
         //Cerramos las partes del pipe que no vamos a utilizar
         close(filter->read_pipe[1]); // Recordar pipe[1] es para escritura y pipe[0] para lectura
@@ -831,7 +832,7 @@ static void filter_init(struct selector_key * key){
             close(filter->read_pipe[0]);
             close(filter->write_pipe[1]);
         }
-    }else{
+    }else if (pid>0){
         filter->slave_proc_pid = pid;
         
         //Cerramos las partes del pipe que no vamos a utilizar
@@ -858,7 +859,9 @@ static void filter_init(struct selector_key * key){
         }
 
         connection->references+=2;
-
+    }else{
+        log(ERROR,"Failed to fork filter proccess. Error: %s",strerror(errno));
+        // TODO: Manejar caso en el que se no se puede hacer el filter para que se lo mande directo al cliente!!
     }
 
 }
@@ -982,6 +985,7 @@ static unsigned analize_process_response(connection * connection, buffer * buffe
             }
         }
         analize_response(connection);
+
         connection->is_awaiting_response_from_origin = false;
     }
 
@@ -1030,10 +1034,11 @@ unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
     if (readed > 0)
     {         
         buffer_write_adv(buffer, readed);
-        if(connection->filter.state == FILTER_CLOSE){
-            ret_value = analize_process_response(connection,buffer,connection->current_command->type == CMD_RETR,
+        if(connection->filter.state == FILTER_CLOSE ){
+            ret_value = analize_process_response(connection,buffer,connection->current_command->type == CMD_RETR && pop3_proxy_args.filter_activated,
                                                  true); // El ante ultimo es true por que nos interesa setear para el filter si es de interes la respuesta
         }
+
     }
     else
     {

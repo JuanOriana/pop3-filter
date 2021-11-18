@@ -4,6 +4,9 @@
 #include <stdbool.h>
 #include "stdint.h"
 
+#define TRUE 1
+#define FALSE 0
+
 #define DEFAULT_ERROR_FILE "/dev/null"
 #define DEFAULT_ORIGIN_PORT 110
 #define DEFAULT_PROXY_ADDR "0.0.0.0"
@@ -13,6 +16,8 @@
 #define DEFAULT_BUFF_SIZE 2048
 #define DEFAULT_TIMEOUT 200
 #define DEFAULT_PROXY_POP3_VERSION_NUMBER "1.0"
+
+
 
 
 //CAMBIAR NOMBRE
@@ -32,6 +37,7 @@ struct pop3_proxy_args
     char filter[1024];
     char error_file[1024];
     char *version_number;
+    bool filter_activated;
 };
 
 /**

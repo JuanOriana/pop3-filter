@@ -71,6 +71,7 @@ void parse_args(const int argc, char **argv, struct pop3_proxy_args *args)
     args->current_connections = 0;
     args->bytes_transfered = 0;
     args->version_number = DEFAULT_PROXY_POP3_VERSION_NUMBER;
+    args->filter_activated = FALSE;
 
     int c;
 
@@ -105,6 +106,7 @@ void parse_args(const int argc, char **argv, struct pop3_proxy_args *args)
             break;
         case 't':
             //TODO: CHECK IF FILTER IS VALID
+            args->filter_activated = TRUE;
             memcpy(args->filter,optarg,strlen(optarg));
             break;
         case 'v':

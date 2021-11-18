@@ -16,7 +16,7 @@ void filter_parser_init(filter_parser * parser){
     parser->state = FILTER_MSG;
     parser->first_time = true;
     parser->line_size = 0;
-    parser->state_size = 0;
+    parser->state_size = 0; // TODO:crl_state
 }
 
 int filter_parser_is_done(const filter_parser_state state){
