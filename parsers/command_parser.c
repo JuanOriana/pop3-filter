@@ -158,8 +158,14 @@ static void command_type_state (command_parser * parser, const char c, bool * fi
                     current_command->type = all_command_data[i].type;
                     parser->state_size = 0;
                     if(all_command_data[i].max_args > 0) {
-                        if(current_command->type == CMD_USER || current_command->type == CMD_APOP)
-                            current_command->data = malloc((MAX_ARG_SIZE + 1) * sizeof(uint8_t));    //NULL TERMINATED
+                        if(current_command->type == CMD_USER || current_command->type == CMD_APOP) {
+                            if (current_command->data == NULL) {
+                                current_command->data = calloc(MAX_ARG_SIZE + 1,sizeof(uint8_t));    //NULL TERMINATED
+                            }
+                            else{
+                                memset(current_command->data,0,MAX_ARG_SIZE+1);
+                            }
+                        }
                         parser->state = COMMAND_ARGS;
                     } else
                         parser->state = COMMAND_CRLF;
