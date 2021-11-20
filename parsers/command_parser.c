@@ -163,7 +163,7 @@ static void command_type_state (command_parser * parser, const char c, bool * fi
                                 current_command->data = calloc(MAX_ARG_SIZE + 1,sizeof(uint8_t));    //NULL TERMINATED
                             }
                             else{
-                                memset(current_command->data,0,MAX_ARG_SIZE+1);
+                                memset(current_command->data,0,MAX_ARG_SIZE + 1);
                             }
                         }
                         parser->state = COMMAND_ARGS;
