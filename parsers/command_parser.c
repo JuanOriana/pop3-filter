@@ -66,6 +66,7 @@ void command_parser_init(command_parser * parser) {
     parser->line_size       = 0;
     parser->state_size      = 0;
     parser->args_size      = 0;
+    parser->is_expecting_new_arg = false;
 }
 
 command_state command_parser_feed(command_parser * parser, const char c, bool * finished) {
@@ -180,19 +181,24 @@ static void command_type_state (command_parser * parser, const char c, bool * fi
 }
 
 static void command_args_state (command_parser * parser, const char c, bool * finished, command_instance * current_command) {
+
     // Espacio indica nuevo argumento
     if(c == ' ') {
-        if(parser->args_size == all_command_data[current_command->type].max_args)
-            parser->state = COMMAND_ERROR;
-        else if(parser->state_size == 0)
-            parser->state_size++;
-        else if(parser->state_size > 1 && parser->args_size < all_command_data[current_command->type].max_args) {
-            parser->state_size = 1;
-            parser->args_size++;
-        }
+        parser->is_expecting_new_arg = true;
     }
     // Leyendo un argumento
     else if(c != '\r' && c != '\n') {
+        if (parser->is_expecting_new_arg){
+            if(parser->args_size == all_command_data[current_command->type].max_args)
+                parser->state = COMMAND_ERROR;
+            else if(parser->state_size == 0)
+                parser->state_size++;
+            else if(parser->state_size > 1 && parser->args_size < all_command_data[current_command->type].max_args) {
+                parser->state_size = 1;
+                parser->args_size++;
+            }
+            parser->is_expecting_new_arg = false;
+        }
         parser->crlf_state = 0;
         if(parser->state_size == 0)
             parser->state = COMMAND_ERROR;
