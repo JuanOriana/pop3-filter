@@ -176,7 +176,7 @@ int main(int argc, const char* argv[]) {
         }
 
         int req_size;
-        ssize_t n = 0;
+        ssize_t resp_size;
         socklen_t len;
 
         memset(buffer_in, 0, MAXLINE);
@@ -186,30 +186,26 @@ int main(int argc, const char* argv[]) {
             log(ERROR, "Error converting request to buffer");
         }
 
-        if (sap_request_to_buffer(buffer_out, &request, &req_size) < 0) {
-            log(ERROR, "Error converting request to buffer");
-        }
-
         if (ip_type == ADDR_IPV4) {
-            sendto(sockfd, buffer_out, n,
+            sendto(sockfd, buffer_out, req_size,
                    MSG_CONFIRM, (const struct sockaddr *) &servaddr,
                    sizeof(servaddr));
 
-            n = recvfrom(sockfd, (char *) buffer_in, MAXLINE,
+            resp_size = recvfrom(sockfd, (char *) buffer_in, MAXLINE,
                          MSG_WAITALL, (struct sockaddr *) &servaddr,
                          &len);
         }else{
-            sendto(sockfd, buffer_out, n,
+            sendto(sockfd, buffer_out, req_size,
                    MSG_CONFIRM, (const struct sockaddr *) &servaddr6,
                    sizeof(servaddr6));
 
-            n = recvfrom(sockfd, (char *) buffer_in, MAXLINE,
+            resp_size = recvfrom(sockfd, (char *) buffer_in, MAXLINE,
                          MSG_WAITALL, (struct sockaddr *) &servaddr6,
                          &len);
         }
 
         // Timeout
-        if (n < 0)
+        if (resp_size < 0)
         {
             printf("\033[0;31m");
             printf("No obtuvimos respuesta del servidor, puede ser que este lento pero por si las dudas verifique que ingreso correctamente"

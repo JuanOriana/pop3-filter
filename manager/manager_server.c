@@ -62,6 +62,7 @@ void manager_passive_accept(struct selector_key *key)
     memset(buffer_out, 0, MAX_LINE);
 
     ssize_t n = recvfrom(key->fd, buffer_in, MAX_LINE, 0, (struct sockaddr *)&client_addr, &client_addr_len);
+
     if (n <= 0)
     {
         log(ERROR, "recvfrom() failed: %s ", strerror(errno));
