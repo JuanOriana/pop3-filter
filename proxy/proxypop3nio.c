@@ -532,10 +532,11 @@ static void proxy_time_out(struct selector_key *key){
 
     if(connection!= NULL && difftime(time(NULL),connection->session.last_used) >= pop3_proxy_state.timeout){
         log(DEBUG,"Destroying connection for inactivity");
-        selector_unregister_fd(key->s,connection->origin_fd);
-        selector_unregister_fd(key->s,connection->client_fd);
         close(connection->client_fd);
         close(connection->origin_fd);
+        selector_unregister_fd(key->s,connection->origin_fd);
+        selector_unregister_fd(key->s,connection->client_fd);
+        
     }
 }
 
@@ -561,12 +562,14 @@ static void proxy_done(struct selector_key *key){
     connection * connection = ATTACHMENT(key);
 
     if (connection->client_fd != -1){
-        selector_unregister_fd(key->s,connection->client_fd);
         close(connection->client_fd);
+        selector_unregister_fd(key->s,connection->client_fd);
+        
     }
     if (connection->origin_fd != -1){
-        selector_unregister_fd(key->s,connection->origin_fd);
         close(connection->origin_fd);
+        selector_unregister_fd(key->s,connection->origin_fd);
+        
 
     }
 }
