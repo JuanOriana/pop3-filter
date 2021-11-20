@@ -1,4 +1,3 @@
-#include "include/manager_client.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -97,7 +96,7 @@ int main(int argc, const char* argv[]) {
 
     }
 
-    int sockfd, valid_param,port, ip_type;
+    int sockfd, valid_param,port, ip_type = ADDR_IPV4;
     struct sockaddr_in servaddr;
     struct sockaddr_in6 servaddr6;
     char buffer_in[MAXLINE], buffer_out[MAXLINE], user_input[USER_INPUT_SIZE], *command_name, *param;
@@ -175,7 +174,7 @@ int main(int argc, const char* argv[]) {
         }
 
         int req_size;
-        ssize_t n;
+        ssize_t n = 0;
         socklen_t len;
 
         memset(buffer_in, 0, MAXLINE);
@@ -185,7 +184,7 @@ int main(int argc, const char* argv[]) {
             log(ERROR, "Error converting request to buffer");
         }
 
-        if (sap_request_to_buffer(buffer_out, &request, &n) < 0) {
+        if (sap_request_to_buffer(buffer_out, &request, &req_size) < 0) {
             log(ERROR, "Error converting request to buffer");
         }
 

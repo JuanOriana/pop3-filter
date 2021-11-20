@@ -1038,7 +1038,7 @@ unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
     {         
         buffer_write_adv(buffer, readed);
         if(connection->filter.state == FILTER_CLOSE ){
-            ret_value = analize_process_response(connection,buffer,connection->current_command->type == CMD_RETR && pop3_proxy_args.filter_activated,
+            ret_value = analize_process_response(connection,buffer,connection->current_command->type == CMD_RETR && pop3_proxy_state.filter_activated,
                                                  true); // El ante ultimo es true por que nos interesa setear para el filter si es de interes la respuesta
         }
 

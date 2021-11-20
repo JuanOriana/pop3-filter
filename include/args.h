@@ -32,6 +32,7 @@ struct pop3_proxy_state
     char *              mng_addr;
     unsigned short      mng_port;
     char                filter[1024];
+    bool                filter_activated;
     char                error_file[1024];
     char *              version_number;
 };
