@@ -214,6 +214,8 @@ char* sap_error(status_code status_code){
             return "Unknown SAP version";
         case SC_INTERNAL_SERVER_ERROR:
             return "Internal server error";
+        default:
+            return "Unknown error";; //TODO: ver qué mensaje va mejor
     }
 }
 
