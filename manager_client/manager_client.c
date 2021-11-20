@@ -70,7 +70,7 @@ int set_filter_req(sap_request * new_request, char * param);
 /**
  * Maneja la respuesta correspondiente a un request
  */
-void handle_response(sap_request request, sap_response new_response, char * prev_message);
+void handle_response(sap_request new_request, sap_response new_response, char * prev_message);
 
 client_command_t client_commands[] = {
         {.name="historic", .handler = historic_connections_req, .success_message="La cantidad de conexiones historicas es:"},
@@ -331,8 +331,9 @@ int set_filter_req(sap_request * new_request, char * param){
     return 0;
 }
 
-void handle_response(sap_request request, sap_response new_response, char * prev_message){
-    if (request.req_id != new_response.req_id){
+void handle_response(sap_request new_request, sap_response new_response, char * prev_message){
+
+    if (new_request.req_id != new_response.req_id){
         printf("\033[0;31m");
         printf("Error: La respuesta recibida no corresponde al pedido efectuado.\n");
         printf("\033[0m");
