@@ -1,15 +1,15 @@
 CFLAGS = -Wall -fsanitize=address -g -lpthread -pthread -D_POSIX_C_SOURCE=200112L
 SUBDIRS = utils parsers proxy manager
 # Ver si corresponde compilar con -o3 para optimizar
-COMMON =  ./utils/buffer.c ./utils/logger.c ./utils/selector.c ./utils/stm.c ./proxy/proxypop3nio.c ./utils/netutils.c ./parsers/hello_parser.c ./parsers/command_parser.c ./parsers/command_response_parser.c ./manager/sap.c ./manager/manager_server.c ./parsers/filter_parser.c
+COMMON =  ./utils/buffer.o ./utils/logger.o ./utils/selector.o ./utils/stm.o ./proxy/proxypop3nio.o ./utils/netutils.o ./parsers/hello_parser.o ./parsers/command_parser.o ./parsers/command_response_parser.o ./manager/sap.o ./manager/manager_server.o ./parsers/filter_parser.o
 
-all: subdirs
+all: subdirs ${COMMON}
 	@echo "Making client";
 	$(CC) $(CFLAGS) -o pop3filter main.c args.c $(COMMON)
 	@echo "Making client";
 	$(CC) $(CFLAGS) -o ./manager_client/client ./manager_client/manager_client.c args.c $(COMMON)
 
-subdirs:
+subdirs: ${COMMON}
 	$(CC) $(CFLAGS) -I./include -c args.c
 	@for subdir in $(SUBDIRS); do \
     	echo "Making all in $$subdir"; \
@@ -25,4 +25,4 @@ clean:
 	rm -r -f *.o  main report.tasks;
 
 
-.PHONY=all clean parsers utils proxy
+.PHONY =all clean subdirs
