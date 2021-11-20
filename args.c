@@ -6,7 +6,7 @@
 #include <getopt.h>
 #include "./include/args.h"
 
-struct pop3_proxy_args pop3_proxy_args;
+struct pop3_proxy_state pop3_proxy_state;
 
 
 static unsigned short
@@ -55,7 +55,7 @@ usage(const char *progname)
     exit(1);
 }
 
-void parse_args(const int argc, char **argv, struct pop3_proxy_args *args)
+void parse_args(const int argc, char **argv, struct pop3_proxy_state *args)
 {
     memset(args, 0, sizeof(*args));
 

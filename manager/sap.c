@@ -2,30 +2,19 @@
 #include <arpa/inet.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-#include "../utils/include/logger.h"
-static int get_packet_size(packet_type packet_type, op_code op_code, char* data);
-static void assign_proper_data_type(sap_data_type * data, data_type_correspondence data_type_enum, char* buffer);
-static void copy_data_to_buff(sap_data_type data, data_type_correspondence data_type_enum, char* buffer);
 
-sap_response * create_new_sap_response(server_version v_type, status_code status_code, op_code op_code, uint16_t req_id,
-                                       sap_data_type data)
-{
-    sap_response * new_response_datagram = calloc(1, sizeof(struct sap_response));
-    if (new_response_datagram == NULL)
-    {
-        return NULL;
-    }
-    else
-    {
-        new_response_datagram->v_type = v_type;
-        new_response_datagram->status_code = status_code;
-        new_response_datagram->op_code = op_code;
-        new_response_datagram->req_id = req_id;
-        new_response_datagram->data = data;
-    }
-    return new_response_datagram;
-}
+/**
+ * Devuelve le tamano de un paquete dado su tipo de operacion y si es respuesta o request
+ */
+static int get_packet_size(packet_type packet_type, op_code op_code, char* data);
+/**
+ * Lee de un buffer el tipo de dato que corresponda
+ */
+static void assign_proper_data_type(sap_data_type * data, data_type_correspondence data_type_enum, char* buffer);
+/**
+ * Carga un buffer con el tipo de dato que le corresponda
+ */
+static void copy_data_to_buff(sap_data_type data, data_type_correspondence data_type_enum, char* buffer);
 
 int sap_buffer_to_request(char *buffer, sap_request * request)
 {
@@ -58,7 +47,6 @@ int sap_buffer_to_response(char *buffer, sap_response * response)
         return -1;
     }
 
-    // https://wiki.sei.cmu.edu/confluence/display/c/POS39-C.+Use+the+correct+byte+ordering+when+transferring+data+between+systems ntohl function explanation
     response->v_type = *((uint8_t *) buffer);
     buffer += sizeof(uint8_t);
 
@@ -161,6 +149,7 @@ static void assign_proper_data_type(sap_data_type * data, data_type_corresponden
             memcpy(data->string, buffer, len);
             break;
         case SAP_BLANK:
+        default:
             data->string[0] = 0;
     }
 }
@@ -192,17 +181,6 @@ static void copy_data_to_buff(sap_data_type data, data_type_correspondence data_
     }
 }
 
-
-void free_sap_request(sap_request *request)
-{
-    free(request);
-}
-
-void free_sap_response(sap_response *response)
-{
-    free(response);
-}
-
 char* sap_error(status_code status_code){
     switch (status_code) {
         case SC_OK:
@@ -217,6 +195,8 @@ char* sap_error(status_code status_code){
             return "Unknown SAP version";
         case SC_INTERNAL_SERVER_ERROR:
             return "Internal server error";
+        default:
+            return "Unknown error";
     }
 }
 

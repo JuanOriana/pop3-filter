@@ -87,23 +87,56 @@ typedef struct sap_response
 {
     server_version v_type;
     status_code status_code;
-    // Op code it's responding to. Allows for easier size and type calcs.
     op_code op_code;
     uint16_t req_id;
     sap_data_type data;
 } sap_response;
 
+/**
+ * Convierte un buffer a un struct de request
+ * @param buffer    de donde leer
+ * @param request   a donde dejarlo
+ * @return          un flag que es 0 en exito y < 0 en error
+ */
 int sap_buffer_to_request(char *buffer, sap_request* request);
+
+/**
+ * Convierte un buffer a un struct de response
+ * @param buffer    de donde leer
+ * @param response  a donde dejarlo
+ * @return          un flag que es 0 en exito y < 0 en error
+ */
 int sap_buffer_to_response(char *buffer, sap_response * response);
-int sap_request_to_buffer(char* buffer, sap_request * response, int* size);
+
+/**
+ * Convierte un struct de request a buffer
+ * @param request   de donde parsear
+ * @param buffer    a donde dejarlo
+ * @param size      el tamano del buffer resultante
+ * @return          un flag que es 0 en exito y < 0 en error
+ */
+int sap_request_to_buffer(char* buffer, sap_request * request, int* size);
+
+/**
+ * Convierte un struct de response a buffer
+ * @param response  de donde parsear
+ * @param buffer    a donde dejarlo
+ * @param size      el tamano del buffer resultante
+ * @return          un flag que es 0 en exito y < 0 en error
+ */
 int sap_response_to_buffer(char* buffer, sap_response * response, int* size);
 
-void free_sap_request(sap_request *request);
-void free_sap_response(sap_response *response);
-
+/*
+ * Devuelven los tipos de dato que corresponden a una operacion determinada
+ */
 data_type_correspondence op_to_req_data_type(op_code op_code);
 data_type_correspondence op_to_resp_data_type(op_code op_code);
 
+/**
+ * Devuelve el error de SAP en formato legible
+ * @param status_code el codigo de estado
+ * @return            el resultado en lenguaje humano
+ */
 char* sap_error(status_code status_code);
 
 #endif

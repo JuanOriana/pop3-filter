@@ -168,7 +168,7 @@ typedef struct state_definition state_definition;
 
 struct connection *connection_pool;
 int connection_pool_size = 0;
-extern struct pop3_proxy_args pop3_proxy_args;
+extern struct pop3_proxy_state pop3_proxy_state;
 
 static void proxy_read(struct selector_key *key);
 static void proxy_write(struct selector_key *key);
@@ -805,7 +805,7 @@ static void filter_init(struct selector_key * key){
         filter->slave_proc_pid = -1;
 
         close(STDERR_FILENO);
-        open(pop3_proxy_args.error_file, O_WRONLY | O_APPEND);
+        open(pop3_proxy_state.error_file, O_WRONLY | O_APPEND);
 
         //Cerramos las partes del pipe que no vamos a utilizar
         close(filter->read_pipe[1]); // Recordar pipe[1] es para escritura y pipe[0] para lectura
@@ -821,7 +821,7 @@ static void filter_init(struct selector_key * key){
 
         set_enviroment_variables(connection); // Seteamos las variables de entorno que algunos filters necesitan
 
-        if(execl("/bin/sh","sh","-c",pop3_proxy_args.filter,(char * )0) < 0){
+        if(execl("/bin/sh","sh","-c",pop3_proxy_state.filter,(char * )0) < 0){
             log(ERROR,"Executing command");
             close(filter->read_pipe[0]);
             close(filter->write_pipe[1]);

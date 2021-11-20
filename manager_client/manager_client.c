@@ -29,20 +29,6 @@ uint16_t req_id;
 
 #define COMMAND_TOTAL_COUNT 11
 
-typedef enum client_command_enum{
-    C_CM_HISTORIC,
-    C_CM_CURRENT,
-    C_CM_TRANSFER,
-    C_CM_GET_BUFF,
-    C_CM_SET_BUFF,
-    C_CM_GET_TIMEOUT,
-    C_CM_SET_TIMEOUT,
-    C_CM_SET_ERROR,
-    C_CM_GET_ERROR,
-    C_CM_GET_FILTER,
-    C_CM_SET_FILTER,
-} client_command_enum;
-
 typedef int (*req_handler_fun_type) ( sap_request *, char *);
 
 typedef struct client_command_t{
@@ -52,12 +38,22 @@ typedef struct client_command_t{
 }client_command_t;
 
 
-
+/**
+ * Muestra todos los comandos habilitados
+ */
 void help();
+
+/**
+ * Funciones genericas para crear requests
+ */
 void build_blank_request(sap_request * new_request, op_code op_code);
 void build_single_request(sap_request * new_request,op_code op_code,uint8_t single_data);
 void build_short_request(sap_request * new_request,op_code op_code,uint16_t short_data);
 void build_long_request(sap_request * new_request,op_code op_code,uint16_t long_data);
+
+/**
+ * Funciones especificas para crear requests. Si da algo < 0 es que hubo un error en los parametros
+ */
 int historic_connections_req(sap_request * new_request, char * param);
 int current_connections_req(sap_request * new_request, char * param);
 int transfered_bytes_req(sap_request * new_request, char * param);
@@ -69,7 +65,11 @@ int get_error_req(sap_request * new_request, char * param);
 int set_error_req(sap_request * new_request, char * param);
 int get_filter_req(sap_request * new_request, char * param);
 int set_filter_req(sap_request * new_request, char * param);
-void handle_response(sap_response new_response, char * prev_message);
+
+/**
+ * Maneja la respuesta correspondiente a un request
+ */
+void handle_response(sap_request request, sap_response new_response, char * prev_message);
 
 client_command_t client_commands[] = {
         {.name="historic", .handler = historic_connections_req, .success_message="La cantidad de conexiones historicas es:"},
@@ -95,7 +95,7 @@ int main(int argc, const char* argv[]) {
 
     }
 
-    int sockfd, valid_param,port, ip_type = ADDR_IPV4;
+    int sockfd, valid_param,port, ip_type;
     struct sockaddr_in servaddr;
     struct sockaddr_in6 servaddr6;
     char buffer_in[MAXLINE], buffer_out[MAXLINE], user_input[USER_INPUT_SIZE], *command_name, *param;
@@ -114,6 +114,7 @@ int main(int argc, const char* argv[]) {
     {
         servaddr.sin_family = AF_INET;
         servaddr.sin_port = port;
+        ip_type = ADDR_IPV4;
     }
     else if(inet_pton(AF_INET6, argv[1], &servaddr6.sin6_addr) > 0){
         servaddr6.sin6_family = AF_INET6;
@@ -123,7 +124,7 @@ int main(int argc, const char* argv[]) {
 
     // Creating socket file descriptor
     if ((sockfd = socket(ip_type == ADDR_IPV4 ? AF_INET:AF_INET6, SOCK_DGRAM, 0)) < 0 ) {
-        perror("socket creation failed");
+        log(ERROR,"Failed manager client socket creation");
         exit(EXIT_FAILURE);
     }
 
@@ -131,20 +132,22 @@ int main(int argc, const char* argv[]) {
     tv.tv_sec = TIMEOUT_SEC;
     tv.tv_usec = 0;
     if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
-        perror("couldn't set timeout options");
+        log(ERROR,"Failed manager client setsockopt");
+        close(sockfd);
         exit(EXIT_FAILURE);
     }
 
     while(go_on) {
         command_name = param = NULL;
-        memset(user_input, 0, USER_INPUT_SIZE);
         printf("\033[0;32m");
         printf("sap_client >> ");
         printf("\033[0m");
+        memset(user_input, 0, USER_INPUT_SIZE);
         fgets(user_input,USER_INPUT_SIZE,stdin);
-        //Remove \r\n or \n
+        // Remuevo \r\n o \n del final
         user_input[strcspn(user_input, "\r\n")] = 0;
         command_name = strtok(user_input, " ");
+
         if (command_name != NULL) {
             param = strtok(NULL, " ");
         }
@@ -171,10 +174,11 @@ int main(int argc, const char* argv[]) {
             continue;
         }
 
-        int n;
+        int req_size;
+        ssize_t n;
         socklen_t len;
 
-        if (sap_request_to_buffer(buffer_out, &request, &n) < 0) {
+        if (sap_request_to_buffer(buffer_out, &request, &req_size) < 0) {
             log(ERROR, "Error converting request to buffer");
         }
 
@@ -208,10 +212,10 @@ int main(int argc, const char* argv[]) {
 
         if (sap_buffer_to_response(buffer_in, &response) < 0) {
             log(ERROR, "Error converting buffer to response");
-
+            continue;
         }
 
-        handle_response(response,client_commands[i].success_message);
+        handle_response(request,response,client_commands[i].success_message);
     }
 
     close(sockfd);
@@ -319,10 +323,16 @@ int set_filter_req(sap_request * new_request, char * param){
     return 0;
 }
 
-void handle_response(sap_response new_response, char * prev_message){
+void handle_response(sap_request request, sap_response new_response, char * prev_message){
+    if (request.req_id != new_response.req_id){
+        printf("\033[0;31m");
+        printf("Error: La respuesta recibida no corresponde al pedido efectuado.\n");
+        printf("\033[0m");
+        return;
+    }
     if (new_response.status_code != 0){
         printf("\033[0;31m");
-        printf("Error: %s\n", sap_error(new_response.status_code));
+        printf("Error: %s.\n", sap_error(new_response.status_code));
         printf("\033[0m");
         return;
     }

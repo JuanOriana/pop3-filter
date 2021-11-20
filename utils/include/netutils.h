@@ -6,12 +6,12 @@
 #define SOCKADDR_TO_HUMAN_MIN (INET6_ADDRSTRLEN + 5 + 1)
 #define N_BUFFER(x) (sizeof(x) / sizeof((x)[0]))
 
-typedef enum IP_REP_TYPE
+typedef enum ip_rep_type
 {
     ADDR_IPV4,
     ADDR_IPV6,
     ADDR_DOMAIN,
-} IP_REP_TYPE;
+} ip_rep_type;
 
 typedef enum passive_type
 {
@@ -26,20 +26,24 @@ typedef union address_multi_storage
 } address_multi_storage;
 
 /**
- * Representacion general de cualquier itpo de address.
+ * Representacion general de cualquier tipo de address, ya sea ipv4; ivp6 o un dominio
+ * el puerto debe ser precargado antes de usar get_address_representation
  */
 typedef struct address_representation
 {
-    IP_REP_TYPE type;
+    ip_rep_type type;
     address_multi_storage addr;
-    /** Port in network byte order */
     in_port_t port;
     socklen_t addr_len;
     int domain;
 } address_representation;
 
 /**
- * Parsea un string a la representasion address correspondiente (IPv4,IPV6 o dominio).
+ * Parsea un string a la address_representation correspondiente (IPv4, IPV6 o dominio).
+ *
+ * @param address     la representacion donde quedara guardada
+ * @param stringed_ip la ip en formato string
+ *
  */
 void get_address_representation(address_representation *address, const char *stringed_ip);
 
@@ -48,10 +52,6 @@ void get_address_representation(address_representation *address, const char *str
  *
  * @param buff     el buffer de escritura
  * @param buffsize el tamaño del buffer  de escritura
- *
- * @param af    address family
- * @param addr  la dirección en si
- * @param nport puerto en network byte order
  *
  */
 const char *

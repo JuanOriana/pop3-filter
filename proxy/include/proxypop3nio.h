@@ -7,8 +7,14 @@
 
 #include "../../utils/include/netutils.h"
 
+/*
+ * Funcion de manejo de accept para el proxy
+ */
 void proxy_passive_accept(struct selector_key *key);
+
+/*
+ * Destruye todas las instancias que hayan quedado sin uso en el pool
+ */
 void connection_pool_destroy();
-unsigned on_read_ready_copying(struct selector_key *key);
 
 #endif
