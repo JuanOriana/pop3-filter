@@ -8,6 +8,7 @@
 
 
 typedef enum{
+    FILTER_FIRST_LINE,
     FILTER_MSG,
     FILTER_DOT,
     FILTER_PRE_DOT,
@@ -28,8 +29,8 @@ void filter_parser_init(filter_parser * parser);
 
 int filter_parser_is_done(const filter_parser_state state);
 
-filter_parser_state filter_parser_feed(filter_parser * parser, const uint8_t c, buffer * dest, bool skip);
+filter_parser_state filter_parser_feed(filter_parser * parser, const uint8_t c, buffer * dest, bool skip,buffer * start_msg);
 
-filter_parser_state filter_parser_consume(filter_parser * parser, buffer * src, buffer * dest, bool skip,char * start_message);
+filter_parser_state filter_parser_consume(filter_parser * parser, buffer * src, buffer * dest, bool skip,buffer * start_msg);
 
 #endif

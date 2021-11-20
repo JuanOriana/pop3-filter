@@ -87,7 +87,7 @@ typedef enum
 struct filter_data{
     int     write_pipe[2];
     int     read_pipe[2];
-    char * start_message;
+    buffer *start_message;
     pid_t   slave_proc_pid;
     filter_state state;
 };
@@ -841,7 +841,10 @@ static void filter_init(struct selector_key * key){
         close(filter->read_pipe[0]);
         filter->read_pipe[0] = -1;
 
-        filter->start_message = malloc(sizeof(char) * START_MESSAGE_SIZE);
+        uint8_t * aux = malloc(sizeof(char) * START_MESSAGE_SIZE);
+        filter->start_message = malloc(sizeof(buffer));
+        buffer_init(filter->start_message,START_MESSAGE_SIZE,aux);
+
 
 
         filter_parser_init(&connection->filter_add_parser);
@@ -957,7 +960,7 @@ unsigned read_and_process_client(struct selector_key *key,struct copy *copy){
 
 static unsigned analize_process_response(connection * connection, buffer * buffer, bool interest_retr, bool to_new_command) {
     unsigned ret = COPYING;
-    bool errored = false, new_response = false;
+    bool errored = false;
     size_t size;
     uint8_t * ptr = buffer_read_ptr(buffer,&size);
     const command_response_state state = command_response_parser_consume_until(&connection->command_response_parser, 
@@ -1072,6 +1075,7 @@ static void filter_close(struct selector_key *key){
             close(filter->write_pipe[i]);
         }
     }
+    free(filter->start_message->data);
     free(filter->start_message);
     memset(filter,0,sizeof(struct filter_data));
     connection->filter.slave_proc_pid = -1;
@@ -1093,14 +1097,12 @@ unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
     errno=0;
     readed = read(key->fd, ptr, max_size_to_read);
 
-
-    filter_parser_state state;
        
     if (readed > 0)
     {
         buffer_write_adv(src, readed);
         // Copio la respuesta parseada al buffer del cliente
-        state = filter_parser_consume(&connection->filter_add_parser,src,dest,false,connection->filter.start_message);
+        filter_parser_consume(&connection->filter_add_parser,src,dest,false,connection->filter.start_message);
 
     }
     else if( readed ==0)
@@ -1285,10 +1287,9 @@ static unsigned send_to_origin(struct selector_key *key,struct copy *copy){
     ssize_t sended;
     buffer *buffer = copy->write_buffer;
     uint8_t *ptr = buffer_read_ptr(buffer, &max_size_to_write);
-    command_state command_state;
     size_t to_send =0;
 
-    command_state = command_parser_consume(&connection->command_parser,buffer,false,&connection->is_awaiting_response_from_origin,&to_send);
+    command_parser_consume(&connection->command_parser,buffer,false,&connection->is_awaiting_response_from_origin,&to_send);
 
     if(connection->is_awaiting_response_from_origin){
         memcpy(connection->current_command,&connection->command_parser.current_command,sizeof(command_instance));
