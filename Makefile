@@ -5,7 +5,7 @@ COMMON =  ./utils/buffer.c ./utils/logger.c ./utils/selector.c ./utils/stm.c ./p
 
 all: subdirs
 	@echo "Making client";
-	$(CC) $(CFLAGS) -o main main.c args.c $(COMMON)
+	$(CC) $(CFLAGS) -o pop3filter main.c args.c $(COMMON)
 	@echo "Making client";
 	$(CC) $(CFLAGS) -o ./manager_client/client ./manager_client/manager_client.c args.c $(COMMON)
 
