@@ -18,26 +18,23 @@
 #define DEFAULT_PROXY_POP3_VERSION_NUMBER "1.0"
 
 
-
-
-//CAMBIAR NOMBRE
-struct pop3_proxy_args
+struct pop3_proxy_state
 {
-    uint32_t historic_connections;
-    uint32_t current_connections;
-    uint32_t bytes_transfered;
-    uint16_t buff_size;
-    uint8_t timeout;
-    char *pop3_proxy_addr;
-    unsigned short pop3_proxy_port;
-    char *origin_addr;
-    unsigned short origin_port;
-    char *mng_addr;
-    unsigned short mng_port;
-    char filter[1024];
-    char error_file[1024];
-    char *version_number;
-    bool filter_activated;
+    uint32_t            historic_connections;
+    uint32_t            current_connections;
+    uint32_t            bytes_transfered;
+    uint16_t            buff_size;
+    uint8_t             timeout;
+    char *              pop3_proxy_addr;
+    unsigned short      pop3_proxy_port;
+    char *              origin_addr;
+    unsigned short      origin_port;
+    char *              mng_addr;
+    unsigned short      mng_port;
+    char                filter[1024];
+    bool                filter_activated;
+    char                error_file[1024];
+    char *              version_number;
 };
 
 /**
@@ -45,6 +42,6 @@ struct pop3_proxy_args
  * args con defaults o la seleccion humana. Puede cortar
  * la ejecuciÃ³n.
  */
-void parse_args(const int argc, char **argv, struct pop3_proxy_args *args);
+void parse_args(const int argc, char **argv, struct pop3_proxy_state *args);
 
 #endif

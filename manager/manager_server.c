@@ -15,6 +15,9 @@
 #define AUTH 0
 #define MAX_LINE 1024
 
+/*
+ * Creacion de response genericas
+ */
 void build_blank_response_with_status(sap_response * new_response, sap_request new_request, status_code status);
 void build_blank_response(sap_response * new_response, sap_request new_request);
 void build_single_response(sap_response * new_response,sap_request new_request,uint8_t single_data);
@@ -24,6 +27,9 @@ void build_string_response(sap_response * new_response,sap_request new_request,c
 
 typedef void (*resp_handler_fun_type) (sap_response *, sap_request);
 
+/*
+ * Creacion de response especificas
+ */
 void stats_resp(sap_response * new_response, sap_request new_request);
 void get_buff_size_resp(sap_response * new_response, sap_request new_request);
 void set_buff_size_resp(sap_response * new_response, sap_request new_request);
@@ -34,14 +40,15 @@ void set_error_resp(sap_response * new_response, sap_request new_request);
 void get_filter_resp(sap_response * new_response, sap_request new_request);
 void set_filter_resp(sap_response * new_response, sap_request new_request);
 
-extern struct pop3_proxy_args pop3_proxy_args;
-sap_response response;
-sap_request  request;
-
 resp_handler_fun_type resp_handlers[] = {
         stats_resp, get_buff_size_resp, set_buff_size_resp, get_timeout_resp, set_timeout_resp,
         get_error_resp, set_error_resp, get_filter_resp, set_filter_resp
 };
+
+extern struct pop3_proxy_state pop3_proxy_state;
+
+sap_response response;
+sap_request  request;
 
 void manager_passive_accept(struct selector_key *key)
 {
@@ -81,7 +88,6 @@ void manager_passive_accept(struct selector_key *key)
         log(ERROR, "Error converting response to buffer");
     }
 
-    // Enviamos respuesta (el sendto no bloquea)
     sendto(key->fd, buffer_out, out_len, 0, (const struct sockaddr *)&client_addr, client_addr_len);
 
 }
@@ -127,50 +133,50 @@ void stats_resp(sap_response * new_response, sap_request new_request){
     build_blank_response(new_response,new_request);
     switch (new_request.data.sap_single) {
         case SAP_STAT_HISTORIC:
-            new_response->data.sap_long = pop3_proxy_args.historic_connections;
+            new_response->data.sap_long = pop3_proxy_state.historic_connections;
             break;
         case SAP_STAT_CURRENT:
-            new_response->data.sap_long = pop3_proxy_args.current_connections;
+            new_response->data.sap_long = pop3_proxy_state.current_connections;
             break;
         case SAP_STAT_BYTES:
-            new_response->data.sap_long = pop3_proxy_args.bytes_transfered;
+            new_response->data.sap_long = pop3_proxy_state.bytes_transfered;
             break;
     }
 }
 
 void get_buff_size_resp(sap_response * new_response, sap_request new_request){
-    build_short_response(new_response,new_request,pop3_proxy_args.buff_size);
+    build_short_response(new_response,new_request,pop3_proxy_state.buff_size);
 }
 
 void set_buff_size_resp(sap_response * new_response, sap_request new_request){
     build_blank_response(new_response,new_request);
-    pop3_proxy_args.buff_size = new_request.data.sap_short;
+    pop3_proxy_state.buff_size = new_request.data.sap_short;
 }
 
 void get_timeout_resp(sap_response * new_response, sap_request new_request){
-    build_single_response(new_response,new_request,pop3_proxy_args.timeout);
+    build_single_response(new_response,new_request,pop3_proxy_state.timeout);
 }
 
 void set_timeout_resp(sap_response * new_response, sap_request new_request){
     build_blank_response(new_response,new_request);
-    pop3_proxy_args.timeout = new_request.data.sap_single;
+    pop3_proxy_state.timeout = new_request.data.sap_single;
 }
 
 void get_error_resp(sap_response * new_response, sap_request new_request){
-    build_string_response(new_response,new_request,pop3_proxy_args.error_file);
+    build_string_response(new_response,new_request,pop3_proxy_state.error_file);
 }
 
 void set_error_resp(sap_response * new_response, sap_request new_request){
     build_blank_response(new_response,new_request);
-    strcpy(pop3_proxy_args.error_file,new_request.data.string);
+    strcpy(pop3_proxy_state.error_file,new_request.data.string);
 }
 
 void get_filter_resp(sap_response * new_response, sap_request new_request){
-    build_string_response(new_response,new_request,pop3_proxy_args.filter);
+    build_string_response(new_response,new_request,pop3_proxy_state.filter);
 
 }
 
 void set_filter_resp(sap_response * new_response, sap_request new_request){
     build_blank_response(new_response,new_request);
-    strcpy(pop3_proxy_args.filter,new_request.data.string);
+    strcpy(pop3_proxy_state.filter,new_request.data.string);
 }

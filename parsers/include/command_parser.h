@@ -28,8 +28,9 @@ typedef enum command_t {
 
 typedef struct command_instance {
     command_t    type;
+    // is_multi e indicator sirven mas adelante para el manejo de su response
     bool         is_multi;
-    bool         indicator; // Data for response. True is positive and false is negative
+    bool         indicator;
     void *       data;
 } command_instance;
 
@@ -41,32 +42,38 @@ typedef enum command_state {
 } command_state;
 
 typedef struct command_parser {
-    int line_size;
-    int crlf_state;  //0 NONE, 1 \r READ, 2 \n READ
-    int state_size;
-    int args_size;
-    int    invalid_size;
-    bool   invalid_type[SIZE_OF_CMD_TYPES];
-    command_state state;
-    command_instance current_command;
+    int                 line_size;
+    int                 crlf_state;  //0 NONE, 1 \r READ, 2 \n READ
+    int                 state_size;
+    int                 args_size;
+    // Asumo que todos los comandos son posibles y voy descartando segun encuentro incompatibilidades
+    int                 invalid_size;
+    bool                invalid_type[SIZE_OF_CMD_TYPES];
+    command_state       state;
+    command_instance    current_command;
 } command_parser;
 
-/** inicializa el parser */
+/**
+ * Inicializa el parser
+ */
 void command_parser_init(command_parser * parser);
 
-/** entrega un byte al parser. retorna true si se llego al final  */
+/**
+ * Entrega un char al parser. Deja a finished en true si se llego al final
+ */
 command_state command_parser_feed(command_parser * parser, const char c, bool * finished);
 
 /**
- * por cada elemento del buffer llama a `commandParserFeed' hasta que
- * el parseo se encuentra completo o se requieren mas bytes.
- *
- * @param errored parametro de salida. si es diferente de NULL se deja dicho
- *   si el parsing se debió a una condición de error
+ * Consume un los chars de un buffer
+ * Finaliza si:
+ *  a) Quiero manejar pipelining y llegue al final de un comando
+ *  b) Consumi todo
  */
 command_state command_parser_consume(command_parser * parser, buffer* buffer, bool pipelining, bool * finished,size_t * n_consumed);
 
+/**
+ * Retorna el usuario, dado el comando que lo leyo
+*/
 char * get_user(command_instance command);
-void command_delete(command_instance * command);
 
 #endif

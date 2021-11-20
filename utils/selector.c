@@ -669,22 +669,16 @@ finally:
 
 int selector_fd_set_nio(const int fd)
 {
-    int ret = 0;
     int flags = fcntl(fd, F_GETFD, 0);
     if (flags == -1)
     {
-        printf("error flags ");
-        ret = -1;
+        return -1;
     }
-    else
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
     {
-        if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
-        {
-            printf("error fcntl socket");
-            ret = -1;
-        }
+        return -1;
     }
-    return ret;
+    return 0;
 }
 
 int set_non_blocking(const int fd)
