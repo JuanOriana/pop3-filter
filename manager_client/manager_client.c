@@ -150,6 +150,8 @@ int main(int argc, const char* argv[]) {
         command_name = strtok(user_input, " ");
         if (command_name != NULL) {
             param = strtok(NULL, " ");
+        }else{
+            command_name = "null command"; // TODO: Ver si ponemos una cte pero sin esto rompe cuando se manda una entrada vacia por que el command name queda en null para los strcmp.
         }
 
         //Special case for help
