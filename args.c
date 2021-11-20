@@ -89,6 +89,7 @@ void parse_args(const int argc, char **argv, struct pop3_proxy_state *args)
             break;
         case 'e':
             memcpy(args->error_file,optarg,strlen(optarg));
+            break;
         case 'l':
             args->pop3_proxy_addr = optarg;
             break;
