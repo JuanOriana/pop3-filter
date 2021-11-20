@@ -87,7 +87,7 @@ typedef enum
 struct filter_data{
     int     write_pipe[2];
     int     read_pipe[2];
-    char * start_message;
+    buffer *start_message;
     pid_t   slave_proc_pid;
     filter_state state;
 };
@@ -352,18 +352,18 @@ struct connection *new_connection(int client_fd, address_representation origin_a
         {
             return NULL;
         }
-        direct_buff = malloc(BUFFSIZE);
-        direct_buff_filter = malloc(BUFFSIZE);
-        direct_buff_origin = malloc(BUFFSIZE);
-        direct_filter_parser_buffer = malloc(BUFFSIZE);
+        direct_buff = malloc(pop3_proxy_state.buff_size);
+        direct_buff_filter = malloc(pop3_proxy_state.buff_size);
+        direct_buff_origin = malloc(pop3_proxy_state.buff_size);
+        direct_filter_parser_buffer = malloc(pop3_proxy_state.buff_size);
         read_buf = malloc(sizeof(buffer));
-        buffer_init(read_buf, BUFFSIZE, direct_buff);
+        buffer_init(read_buf, pop3_proxy_state.buff_size, direct_buff);
         write_buf = malloc(sizeof(buffer));
-        buffer_init(write_buf, BUFFSIZE, direct_buff_origin); // Errores?
+        buffer_init(write_buf, pop3_proxy_state.buff_size, direct_buff_origin); // Errores?
         filter_buf = malloc(sizeof(buffer));
-        buffer_init(filter_buf, BUFFSIZE, direct_buff_filter); // Errores?
+        buffer_init(filter_buf, pop3_proxy_state.buff_size, direct_buff_filter); // Errores?
         filter_parser_buffer = malloc(sizeof(buffer));
-        buffer_init(filter_parser_buffer, BUFFSIZE, direct_filter_parser_buffer); 
+        buffer_init(filter_parser_buffer, pop3_proxy_state.buff_size, direct_filter_parser_buffer);
     }
     else
     {
@@ -491,7 +491,9 @@ static unsigned on_connection_ready(struct selector_key *key)
         struct sockaddr_storage *origin = &connection->origin_address_representation.addr.address_storage;
         sockaddr_to_human(connection->origin_addr_humanized, ADDR_STRING_BUFF_SIZE, origin);
         log(INFO, "Connection successful. Client Address: %s; Origin Address: %s.", connection->client_addr_humanized, connection->origin_addr_humanized);
-        ret = HELLO; 
+        ret = HELLO;
+        pop3_proxy_state.current_connections++;
+        pop3_proxy_state.historic_connections++;
     }
     return ret;
 }
@@ -650,6 +652,8 @@ static void connection_destroy_referenced(connection *connection)
     }
     else if (connection->references == 1)
     {
+        if (pop3_proxy_state.current_connections > 0)
+            pop3_proxy_state.current_connections--;
         if (connection != NULL)
         {
             if (connection_pool_size < MAX_POOL)
@@ -801,11 +805,12 @@ static void filter_init(struct selector_key * key){
         log(ERROR,"Error when creating writing pipe for filter");
     }
     buffer_reset(connection->filter_buffer);
+    errno=0;
     if((pid = fork()) == 0){
         filter->slave_proc_pid = -1;
 
         close(STDERR_FILENO);
-        open(pop3_proxy_state.error_file, O_WRONLY | O_APPEND);
+        open(pop3_proxy_state.error_file, O_CREAT | O_WRONLY | O_APPEND);
 
         //Cerramos las partes del pipe que no vamos a utilizar
         close(filter->read_pipe[1]); // Recordar pipe[1] es para escritura y pipe[0] para lectura
@@ -821,12 +826,13 @@ static void filter_init(struct selector_key * key){
 
         set_enviroment_variables(connection); // Seteamos las variables de entorno que algunos filters necesitan
 
+        // TODO: que pasa si cambia el filter en el medio?
         if(execl("/bin/sh","sh","-c",pop3_proxy_state.filter,(char * )0) < 0){
             log(ERROR,"Executing command");
             close(filter->read_pipe[0]);
             close(filter->write_pipe[1]);
         }
-    }else{
+    }else if (pid>0){
         filter->slave_proc_pid = pid;
         
         //Cerramos las partes del pipe que no vamos a utilizar
@@ -835,7 +841,10 @@ static void filter_init(struct selector_key * key){
         close(filter->read_pipe[0]);
         filter->read_pipe[0] = -1;
 
-        filter->start_message = malloc(sizeof(char) * START_MESSAGE_SIZE);
+        uint8_t * aux = malloc(sizeof(char) * START_MESSAGE_SIZE);
+        filter->start_message = malloc(sizeof(buffer));
+        buffer_init(filter->start_message,START_MESSAGE_SIZE,aux);
+
 
 
         filter_parser_init(&connection->filter_add_parser);
@@ -853,7 +862,9 @@ static void filter_init(struct selector_key * key){
         }
 
         connection->references+=2;
-
+    }else{
+        log(ERROR,"Failed to fork filter proccess. Error: %s",strerror(errno));
+        // TODO: Manejar caso en el que se no se puede hacer el filter para que se lo mande directo al cliente!!
     }
 
 }
@@ -949,13 +960,12 @@ unsigned read_and_process_client(struct selector_key *key,struct copy *copy){
 
 static unsigned analize_process_response(connection * connection, buffer * buffer, bool interest_retr, bool to_new_command) {
     unsigned ret = COPYING;
-    bool errored = false, new_response = false;
+    bool errored = false;
     size_t size;
     uint8_t * ptr = buffer_read_ptr(buffer,&size);
     const command_response_state state = command_response_parser_consume_until(&connection->command_response_parser, 
     ptr,size, connection->current_command, interest_retr, to_new_command, &errored);
 
-    log(DEBUG,"PIPELINING: %s",connection->command_response_parser.includes_pipelining?"true":"false");
 
     if(errored) { // Esto corresponde a que el origin devuelva una respuesta mal formateada (?)
         connection->error_data.err_msg = "-ERR Unexpected event\r\n";
@@ -967,7 +977,18 @@ static unsigned analize_process_response(connection * connection, buffer * buffe
     }
 
     if(state == RESPONSE_INIT) {
+        if (connection->current_command->type == CMD_CAPA && !connection->command_response_parser.includes_pipelining){
+            if (size < 3){
+                log(ERROR,"Can't add pipelining to response");
+            }
+            else {
+                // Remplazo ./r/n por PIPELINING./r/n
+                memcpy(ptr + size - 3, "PIPELINING\r\n.\r\n", 15);
+                buffer_write_adv(buffer, 12);
+            }
+        }
         analize_response(connection);
+
         connection->is_awaiting_response_from_origin = false;
     }
 
@@ -1016,10 +1037,11 @@ unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
     if (readed > 0)
     {         
         buffer_write_adv(buffer, readed);
-        if(connection->filter.state == FILTER_CLOSE){
-            ret_value = analize_process_response(connection,buffer,connection->current_command->type == CMD_RETR,
+        if(connection->filter.state == FILTER_CLOSE ){
+            ret_value = analize_process_response(connection,buffer,connection->current_command->type == CMD_RETR && pop3_proxy_args.filter_activated,
                                                  true); // El ante ultimo es true por que nos interesa setear para el filter si es de interes la respuesta
         }
+
     }
     else
     {
@@ -1053,6 +1075,7 @@ static void filter_close(struct selector_key *key){
             close(filter->write_pipe[i]);
         }
     }
+    free(filter->start_message->data);
     free(filter->start_message);
     memset(filter,0,sizeof(struct filter_data));
     connection->filter.slave_proc_pid = -1;
@@ -1074,14 +1097,12 @@ unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
     errno=0;
     readed = read(key->fd, ptr, max_size_to_read);
 
-
-    filter_parser_state state;
        
     if (readed > 0)
     {
         buffer_write_adv(src, readed);
         // Copio la respuesta parseada al buffer del cliente
-        state = filter_parser_consume(&connection->filter_add_parser,src,dest,false,connection->filter.start_message);
+        filter_parser_consume(&connection->filter_add_parser,src,dest,false,connection->filter.start_message);
 
     }
     else if( readed ==0)
@@ -1266,10 +1287,9 @@ static unsigned send_to_origin(struct selector_key *key,struct copy *copy){
     ssize_t sended;
     buffer *buffer = copy->write_buffer;
     uint8_t *ptr = buffer_read_ptr(buffer, &max_size_to_write);
-    command_state command_state;
     size_t to_send =0;
 
-    command_state = command_parser_consume(&connection->command_parser,buffer,false,&connection->is_awaiting_response_from_origin,&to_send);
+    command_parser_consume(&connection->command_parser,buffer,false,&connection->is_awaiting_response_from_origin,&to_send);
 
     if(connection->is_awaiting_response_from_origin){
         memcpy(connection->current_command,&connection->command_parser.current_command,sizeof(command_instance));

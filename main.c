@@ -202,7 +202,7 @@ int main(int argc, char *argv[])
     }
 
 selector_finally:
-    
+
     if (ss != SELECTOR_SUCCESS)
     {
         fprintf(stderr, "%s: %s\n", (err_msg == NULL) ? "" : err_msg,
@@ -211,13 +211,13 @@ selector_finally:
                     : selector_error(ss));
         ret = 2;
     }
-    
+
     else if (err_msg)
     {
         perror(err_msg);
         ret = 1;
     }
-    
+
     if (selector != NULL)
     {
         selector_destroy(selector);
@@ -234,7 +234,7 @@ selector_finally:
     }
 
     connection_pool_destroy();
-    
+
     return ret;
 }
 

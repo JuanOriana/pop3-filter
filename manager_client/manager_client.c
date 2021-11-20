@@ -11,6 +11,8 @@
 #include "../utils/include/logger.h"
 #include "../utils/include/netutils.h"
 #include "../include/args.h"
+#include <sys/time.h>
+#include <time.h>
 
 #define MAXLINE 2048
 #define USER_INPUT_SIZE 100
@@ -100,8 +102,6 @@ int main(int argc, const char* argv[]) {
     struct sockaddr_in6 servaddr6;
     char buffer_in[MAXLINE], buffer_out[MAXLINE], user_input[USER_INPUT_SIZE], *command_name, *param;
 
-    memset(buffer_in, 0, MAXLINE);
-    memset(buffer_out, 0, MAXLINE);
     memset(&servaddr, 0, sizeof(servaddr));
     memset(&servaddr6, 0, sizeof(servaddr6));
 
@@ -178,7 +178,14 @@ int main(int argc, const char* argv[]) {
         ssize_t n;
         socklen_t len;
 
+        memset(buffer_in, 0, MAXLINE);
+        memset(buffer_out, 0, MAXLINE);
+
         if (sap_request_to_buffer(buffer_out, &request, &req_size) < 0) {
+            log(ERROR, "Error converting request to buffer");
+        }
+
+        if (sap_request_to_buffer(buffer_out, &request, &n) < 0) {
             log(ERROR, "Error converting request to buffer");
         }
 
@@ -245,9 +252,9 @@ void build_long_request(sap_request * new_request,op_code op_code,uint16_t long_
     new_request->data.sap_long= long_data;
 }
 
-void build_string_request(sap_request * new_request,op_code op_code, char* string, int len ){
+void build_string_request(sap_request * new_request,op_code op_code, char* string ){
     build_blank_request(new_request,op_code);
-    memcpy(new_request->data.string,string,len);
+    strcpy(new_request->data.string,string);
 }
 
 int historic_connections_req(sap_request * new_request, char * param){
@@ -306,7 +313,7 @@ int set_error_req(sap_request * new_request, char * param){
     if (param == NULL){
         return -1;
     }
-    build_string_request(new_request,OP_SET_ERROR_FILE,param,strlen(param));
+    build_string_request(new_request,OP_SET_ERROR_FILE,param);
     return 0;
 }
 
@@ -319,7 +326,7 @@ int set_filter_req(sap_request * new_request, char * param){
     if (param == NULL){
         return -1;
     }
-    build_string_request(new_request,OP_SET_FILTER,param, strlen(param));
+    build_string_request(new_request,OP_SET_FILTER,param);
     return 0;
 }
 

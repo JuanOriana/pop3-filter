@@ -4,6 +4,9 @@
 #include <stdbool.h>
 #include "stdint.h"
 
+#define TRUE 1
+#define FALSE 0
+
 #define DEFAULT_ERROR_FILE "/dev/null"
 #define DEFAULT_ORIGIN_PORT 110
 #define DEFAULT_PROXY_ADDR "0.0.0.0"
