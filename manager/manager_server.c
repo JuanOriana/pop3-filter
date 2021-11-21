@@ -39,10 +39,12 @@ void get_error_resp(sap_response * new_response, sap_request new_request);
 void set_error_resp(sap_response * new_response, sap_request new_request);
 void get_filter_resp(sap_response * new_response, sap_request new_request);
 void set_filter_resp(sap_response * new_response, sap_request new_request);
+void is_filter_working_resp(sap_response * new_response, sap_request new_request);
+void toggle_filter_resp(sap_response * new_response, sap_request new_request);
 
 resp_handler_fun_type resp_handlers[] = {
         stats_resp, get_buff_size_resp, set_buff_size_resp, get_timeout_resp, set_timeout_resp,
-        get_error_resp, set_error_resp, get_filter_resp, set_filter_resp
+        get_error_resp, set_error_resp, get_filter_resp, set_filter_resp, is_filter_working_resp, toggle_filter_resp
 };
 
 extern struct pop3_proxy_state pop3_proxy_state;
@@ -180,4 +182,20 @@ void get_filter_resp(sap_response * new_response, sap_request new_request){
 void set_filter_resp(sap_response * new_response, sap_request new_request){
     build_blank_response(new_response,new_request);
     strcpy(pop3_proxy_state.filter,new_request.data.string);
+}
+
+void is_filter_working_resp(sap_response * new_response, sap_request new_request){
+    build_single_response(new_response,new_request,(uint8_t )pop3_proxy_state.filter_activated);
+}
+void toggle_filter_resp(sap_response * new_response, sap_request new_request){
+    if (pop3_proxy_state.filter[0] == 0 || strcmp(pop3_proxy_state.filter,"") == 0){
+        build_blank_response_with_status(new_response,new_request,SC_NO_FILTER);
+    } else{
+        build_blank_response(new_response,new_request);
+    }
+    if(new_request.data.sap_single == 0){
+        pop3_proxy_state.filter_activated = false;
+    } else{
+        pop3_proxy_state.filter_activated = true;
+    }
 }

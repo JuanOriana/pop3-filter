@@ -926,7 +926,6 @@ void on_departure_copying(const unsigned state, struct selector_key *key)
 }
 
 void shut_down_copy(struct copy *copy,bool closeRead){
-        log(ERROR, "Readed 0 or error on client. Error: %s", strerror(errno));
         shutdown(*copy->fd, (closeRead)?SHUT_RD:SHUT_WR);
         copy->duplex &= (closeRead)? ~OP_READ:~OP_WRITE; // le sacamos el interes de lectura o escritura segun corresponda
         if (*copy->other->fd != -1)

@@ -51,7 +51,7 @@ typedef struct command_parser {
     bool                invalid_type[SIZE_OF_CMD_TYPES];
     command_state       state;
     command_instance    current_command;
-    bool                is_expecting_new_arg
+    bool                is_expecting_new_arg;
 } command_parser;
 
 /**

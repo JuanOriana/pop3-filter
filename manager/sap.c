@@ -182,17 +182,19 @@ char* sap_error(status_code status_code){
         case SC_OK:
             return "OK";
         case SC_COMMAND_UNSUPPORTED:
-            return "Command is not supported by server";
+            return "El comando no esta soportado";
         case SC_COMMAND_INVALID_ARGS:
-            return "The arguments are not valid for this command";
+            return "Los argumentos no son validos para este comando";
+        case SC_NO_FILTER:
+            return "No hay ningun filtro en el proxy";
         case SC_UNAUTHORIZED:
-            return "No authorization";
+            return "No esta autorizado";
         case SC_VERSION_UNKNOWN:
-            return "Unknown SAP version";
+            return "Version SAP desconocida";
         case SC_INTERNAL_SERVER_ERROR:
-            return "Internal server error";
+            return "Error interno del servidor";
         default:
-            return "Unknown error";; //TODO: ver qué mensaje va mejor
+            return "Error desconocido";
     }
 }
 
@@ -201,6 +203,7 @@ data_type_correspondence op_to_req_data_type(op_code op_code){
     switch (op_code) {
         case OP_STATS:
         case OP_SET_TIMEOUT:
+        case OP_TOGGLE_FILTER:
             return SAP_SINGLE;
         case OP_SET_BUFF_SIZE:
             return SAP_SHORT;
@@ -215,8 +218,7 @@ data_type_correspondence op_to_req_data_type(op_code op_code){
 data_type_correspondence op_to_resp_data_type(op_code op_code){
     switch (op_code) {
         case OP_GET_TIMEOUT:
-       // case OP_IS_FILTER_WORKING:
-       // case OP_TOGGLE_FILTER:
+        case OP_IS_FILTER_WORKING:
             return SAP_SINGLE;
         case OP_GET_BUFF_SIZE:
             return SAP_SHORT;

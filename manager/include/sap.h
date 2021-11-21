@@ -15,7 +15,7 @@ typedef enum packet_type{
     SAP_RESP
 }packet_type;
 
-#define SAP_OP_SIZE 9
+#define SAP_OP_SIZE 11
 
 typedef enum op_code
 {
@@ -28,8 +28,8 @@ typedef enum op_code
     OP_SET_ERROR_FILE,
     OP_GET_FILTER,
     OP_SET_FILTER,
-//    OP_IS_FILTER_WORKING,
-//    OP_TOGGLE_FILTER
+    OP_IS_FILTER_WORKING,
+    OP_TOGGLE_FILTER
 } op_code;
 
 typedef enum server_version
@@ -42,6 +42,7 @@ typedef enum status_code
     SC_OK = 0,
     SC_COMMAND_UNSUPPORTED = 10,
     SC_COMMAND_INVALID_ARGS= 11,
+    SC_NO_FILTER= 12,
     SC_UNAUTHORIZED = 20,
     SC_VERSION_UNKNOWN = 30,
     SC_INTERNAL_SERVER_ERROR = 40,

@@ -28,7 +28,7 @@ sap_response response;
 sap_request  request;
 uint16_t req_id;
 
-#define COMMAND_TOTAL_COUNT 11
+#define COMMAND_TOTAL_COUNT 14
 
 typedef int (*req_handler_fun_type) ( sap_request *, char *);
 
@@ -66,6 +66,9 @@ int get_error_req(sap_request * new_request, char * param);
 int set_error_req(sap_request * new_request, char * param);
 int get_filter_req(sap_request * new_request, char * param);
 int set_filter_req(sap_request * new_request, char * param);
+int is_filter_toggled_req(sap_request * new_request, char * param);
+int enable_filter_req(sap_request * new_request, char * param);
+int disable_filter_req(sap_request * new_request, char * param);
 
 /**
  * Maneja la respuesta correspondiente a un request
@@ -81,9 +84,13 @@ client_command_t client_commands[] = {
         {.name="gettimeout", .handler = get_timeout_req, .success_message="El timeout es:"},
         {.name="settimeout", .handler = set_timeout_req, .success_message="Timeout actualizado correctamente"},
         {.name="geterror", .handler = get_error_req, .success_message="La salida de error en filter es:"},
-        {.name="seterror", .handler = get_error_req, .success_message="La salida de error en filter fue actualizada"},
+        {.name="seterror", .handler = set_error_req, .success_message="La salida de error en filter fue actualizada"},
         {.name="getfilter", .handler = get_filter_req, .success_message="El filtro utlizado es:"},
-        {.name="setfilter", .handler = set_filter_req, .success_message="Filtro actualizado correctamente"}
+        {.name="setfilter", .handler = set_filter_req, .success_message="Filtro actualizado correctamente"},
+        {.name="filter?", .handler = is_filter_toggled_req, .success_message="El filtro esta "},
+        {.name="enablefilter", .handler = enable_filter_req, .success_message="Filtro encendido"},
+        {.name="disablefilter", .handler = disable_filter_req, .success_message="Filtro apagado"},
+
 };
 
 int go_on = 1;
@@ -327,6 +334,20 @@ int set_filter_req(sap_request * new_request, char * param){
     return 0;
 }
 
+int is_filter_toggled_req(sap_request * new_request, char * param){
+    build_blank_request(new_request,OP_IS_FILTER_WORKING);
+    return 0;
+}
+
+int enable_filter_req(sap_request * new_request, char * param){
+    build_single_request(new_request,OP_TOGGLE_FILTER,1);
+    return 0;
+}
+int disable_filter_req(sap_request * new_request, char * param){
+    build_single_request(new_request,OP_TOGGLE_FILTER,0);
+    return 0;
+}
+
 void handle_response(sap_request new_request, sap_response new_response, char * prev_message){
 
     if (new_request.req_id != new_response.req_id){
@@ -345,7 +366,11 @@ void handle_response(sap_request new_request, sap_response new_response, char * 
 
     switch (data_type) {
         case SAP_SINGLE:
-            printf("%s %d",prev_message,new_response.data.sap_single);
+            if (new_response.op_code == OP_IS_FILTER_WORKING){
+                printf("%s %s",prev_message, new_response.data.sap_single == 0? "apagado":"encendido");
+            } else {
+                printf("%s %d", prev_message, new_response.data.sap_single);
+            }
             break;
         case SAP_SHORT:
             printf("%s %d",prev_message,new_response.data.sap_short);
@@ -357,6 +382,7 @@ void handle_response(sap_request new_request, sap_response new_response, char * 
             printf("%s %s",prev_message,new_response.data.string);
             break;
         case SAP_BLANK:
+        default:
             printf("%s",prev_message);
             break;
     }
@@ -377,5 +403,8 @@ void help(){
            "\tgeterror - Devuelve el file hacia donde se redirige el error.\n"
            "\tseterror <errfile> - Cambia el file hacia donde se redirige el error.\n"
            "\tgetfilter - Devuelve el filtro que usa el transform.\n"
-           "\tsetfilter <filter> - Cambia el filtro que usa el transform.\n\n");
+           "\tsetfilter <filter> - Cambia el filtro que usa el transform.\n"
+           "\tfilter? - Advierte si el filtro esta encendido o no.\n"
+           "\tenablefilter - Enciende el filtro.\n"
+           "\tdisablefilter - Apaga el filtro.\n\n");
 }
