@@ -28,8 +28,10 @@ struct pop3_proxy_state
     char *              pop3_proxy_addr;
     unsigned short      pop3_proxy_port;
     char *              origin_addr;
+    bool                proxy_on_both;
     unsigned short      origin_port;
     char *              mng_addr;
+    bool                mng_on_both;
     unsigned short      mng_port;
     char                filter[1024];
     bool                filter_activated;

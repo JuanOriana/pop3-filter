@@ -249,9 +249,16 @@ static int build_passive(ip_rep_type ip_type, passive_type passive_type)
     int port = passive_type == PASSIVE_TCP ? pop3_proxy_state.pop3_proxy_port : pop3_proxy_state.mng_port;
     char * stringed_addr = passive_type == PASSIVE_TCP ? pop3_proxy_state.pop3_proxy_addr : pop3_proxy_state.mng_addr;
 
-    // Si estamos escuchando en TODAS las interfaces, hacemos que se cumpla tambien en IPv6
-    if (strcmp(stringed_addr,"0.0.0.0") == 0 && ip_type == ADDR_IPV6 ){
+    // Si estamos usando la config default, hay que escuchar en los 2 sockets!
+
+    if (strcmp(stringed_addr,"0.0.0.0") == 0 && ip_type == ADDR_IPV6 && passive_type == PASSIVE_TCP
+            && pop3_proxy_state.proxy_on_both ){
         stringed_addr = "0::0";
+    }
+
+    if (strcmp(stringed_addr,"127.0.0.1") == 0 && ip_type == ADDR_IPV6 && passive_type == PASSIVE_UDP
+            && pop3_proxy_state.mng_on_both ){
+        stringed_addr = "::1";
     }
 
     if ((new_socket = socket(net_flag, sock_type, 0)) < 0) // Puede ser 0 por que cerramos el fd 0 para el proxy asi ganamos ud fd mas
@@ -278,7 +285,7 @@ static int build_passive(ip_rep_type ip_type, passive_type passive_type)
         address.sin_family = AF_INET;
         if (inet_pton(AF_INET, stringed_addr, &address.sin_addr.s_addr) <= 0)
         {
-            log(DEBUG, "String address doesn't translate to IPv4");
+            log(DEBUG, "String address %s doesn't translate to IPv4",stringed_addr);
             close(new_socket);
             return -1;
         }
@@ -297,7 +304,7 @@ static int build_passive(ip_rep_type ip_type, passive_type passive_type)
         address_6.sin6_port = htons(port);
         if (inet_pton(AF_INET6, stringed_addr, &address_6.sin6_addr) <= 0)
         {
-            log(DEBUG, "String address doesn't translate to IPv6");
+            log(DEBUG, "String address %s doesn't translate to IPv6",stringed_addr);
             close(new_socket);
             return -1;
         }
