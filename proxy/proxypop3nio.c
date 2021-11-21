@@ -437,6 +437,9 @@ static unsigned start_connection_with_origin(fd_selector selector, connection *c
 
             connection->references += 1;
         }
+        else{
+            goto connectionfinally;
+        }
     }
     else
     {
@@ -609,6 +612,17 @@ static unsigned dns_resolve_done(struct selector_key *key)
 {
     struct connection *connection = ATTACHMENT(key);
     int ret_val = ERROR_ST;
+
+    // Nothing to resolve!
+    if (connection->dns_resolution_current_iter == NULL) {
+        log(ERROR, "Hostname didnt resolve to any valid IP address.");
+        connection->error_data.err_msg = "-ERR Connection refused.\r\n";
+        if (SELECTOR_SUCCESS != selector_set_interest(key->s, connection->client_fd, OP_WRITE)) {
+            ret_val = ERROR_ST;
+        }else {
+            ret_val = ERROR_W_MESSAGE_ST;
+        }
+    }
 
     while (connection->dns_resolution_current_iter != NULL)
     {
