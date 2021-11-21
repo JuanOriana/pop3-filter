@@ -18,7 +18,7 @@ hello_state parse_hello(hello_parser *parser, buffer *read_buffer)
 {
     hello_state current_state = parser->current_state;
 
-    while (buffer_can_write(read_buffer))
+    while (buffer_can_read(read_buffer))
     {
         const uint8_t readed_char = buffer_read(read_buffer);
         current_state = hello_parser_input(parser, readed_char);
