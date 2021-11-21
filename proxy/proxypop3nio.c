@@ -390,6 +390,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     new_connection->next = NULL;
     new_connection->references = 1;
     memset(&new_connection->error_data,0,sizeof(new_connection->error_data));
+    new_connection->dns_resolution_current_iter = new_connection->dns_resolution = NULL;
 
     new_connection->stm.initial = RESOLVING;
     new_connection->stm.max_state = ERROR_W_MESSAGE_ST;
@@ -451,10 +452,8 @@ static unsigned start_connection_with_origin(fd_selector selector, connection *c
     return CONNECTING;
 
 connectionfinally:
-    if(connection->dns_resolution_current_iter == NULL){
-        log(ERROR,"VER QUE ERROR SERIA ESTE");
-    }else{
-        // TODO: AL HACER ESTO TIRA UN SEG FAULT
+
+    if(connection->dns_resolution_current_iter != NULL){
          connection->dns_resolution_current_iter = connection->dns_resolution_current_iter->ai_next;
     }
 
