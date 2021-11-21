@@ -352,6 +352,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
         {
             return NULL;
         }
+
         direct_buff = malloc(pop3_proxy_state.buff_size);
         direct_buff_filter = malloc(pop3_proxy_state.buff_size);
         direct_buff_origin = malloc(pop3_proxy_state.buff_size);
@@ -376,6 +377,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
         buffer_reset(read_buf);
         buffer_reset(write_buf);
         buffer_reset(filter_buf);
+        buffer_reset(filter_parser_buffer);
     }
 
     new_connection->client_fd = client_fd;
@@ -530,13 +532,13 @@ proxy_write(struct selector_key *key)
 static void proxy_time_out(struct selector_key *key){
     connection * connection = ATTACHMENT(key);
 
-    if(connection!= NULL && difftime(time(NULL),connection->session.last_used) >= TIMEOUT){
+    if(connection!= NULL && difftime(time(NULL),connection->session.last_used) >= pop3_proxy_state.timeout){
         log(DEBUG,"Destroying connection for inactivity");
-        // connection_destroy(ATTACHMENT(key)); /// TODO: ARREGLAR EL PROXY_DESTROY
+        close(connection->client_fd);
+        close(connection->origin_fd);
         selector_unregister_fd(key->s,connection->origin_fd);
         selector_unregister_fd(key->s,connection->client_fd);
-//        close(connection->client_fd);
-//        close(connection->origin_fd);
+        
     }
 }
 
@@ -560,15 +562,14 @@ proxy_close(struct selector_key *key)
 
 static void proxy_done(struct selector_key *key){
     connection * connection = ATTACHMENT(key);
-
+    int origin_fd = connection->origin_fd;
     if (connection->client_fd != -1){
-        selector_unregister_fd(key->s,connection->client_fd);
         close(connection->client_fd);
+        selector_unregister_fd(key->s,connection->client_fd);
     }
-    if (connection->origin_fd != -1){
-        selector_unregister_fd(key->s,connection->origin_fd);
-        close(connection->origin_fd);
-
+    if (origin_fd != -1){
+        close(origin_fd);
+        selector_unregister_fd(key->s,origin_fd);
     }
 }
 
@@ -739,7 +740,7 @@ unsigned on_read_ready_hello(struct selector_key *key){
 
     }else{
         shutdown(key->fd,SHUT_RD);
-        log(ERROR,"Hello recv recieved 0 or error.")
+        log(ERROR,"Hello recv recieved error."); // can be that recieved 0.
         connection->error_data.err_msg = "-ERR HELLO FAILED.\r\n";
         if (SELECTOR_SUCCESS != selector_set_interest(key->s, connection->client_fd, OP_WRITE))
             return ERROR_ST;
