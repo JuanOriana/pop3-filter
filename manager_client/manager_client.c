@@ -24,20 +24,20 @@
 #define MSG_CONFIRM 0
 #endif
 
-sap_response response;
-sap_request  request;
+sap_response resp;
+sap_request req;
 uint16_t req_id;
 
 #define COMMAND_TOTAL_COUNT 14
 
-typedef int (*req_handler_fun_type) ( sap_request *, char *);
+typedef int (*req_handler_fun_type)(sap_request *, char *);
 
-typedef struct client_command_t{
-    char * name;
+typedef struct client_command_t
+{
+    char *name;
     req_handler_fun_type handler;
-    char * success_message;
-}client_command_t;
-
+    char *success_message;
+} client_command_t;
 
 /**
  * Muestra todos los comandos habilitados
@@ -47,63 +47,64 @@ void help();
 /**
  * Funciones genericas para crear requests
  */
-void build_blank_request(sap_request * new_request, op_code op_code);
-void build_single_request(sap_request * new_request,op_code op_code,uint8_t single_data);
-void build_short_request(sap_request * new_request,op_code op_code,uint16_t short_data);
-void build_long_request(sap_request * new_request,op_code op_code,uint16_t long_data);
+void build_blank_request(sap_request *new_request, op_code op_code);
+void build_single_request(sap_request *new_request, op_code op_code, uint8_t single_data);
+void build_short_request(sap_request *new_request, op_code op_code, uint16_t short_data);
+void build_long_request(sap_request *new_request, op_code op_code, uint16_t long_data);
 
 /**
  * Funciones especificas para crear requests. Si da algo < 0 es que hubo un error en los parametros
  */
-int historic_connections_req(sap_request * new_request, char * param);
-int current_connections_req(sap_request * new_request, char * param);
-int transfered_bytes_req(sap_request * new_request, char * param);
-int get_buff_size_req(sap_request * new_request, char * param);
-int set_buff_size_req(sap_request * new_request, char * param);
-int get_timeout_req(sap_request * new_request, char * param);
-int set_timeout_req(sap_request * new_request, char * param);
-int get_error_req(sap_request * new_request, char * param);
-int set_error_req(sap_request * new_request, char * param);
-int get_filter_req(sap_request * new_request, char * param);
-int set_filter_req(sap_request * new_request, char * param);
-int is_filter_toggled_req(sap_request * new_request, char * param);
-int enable_filter_req(sap_request * new_request, char * param);
-int disable_filter_req(sap_request * new_request, char * param);
+int historic_connections_req(sap_request *new_request, char *param);
+int current_connections_req(sap_request *new_request, char *param);
+int transfered_bytes_req(sap_request *new_request, char *param);
+int get_buff_size_req(sap_request *new_request, char *param);
+int set_buff_size_req(sap_request *new_request, char *param);
+int get_timeout_req(sap_request *new_request, char *param);
+int set_timeout_req(sap_request *new_request, char *param);
+int get_error_req(sap_request *new_request, char *param);
+int set_error_req(sap_request *new_request, char *param);
+int get_filter_req(sap_request *new_request, char *param);
+int set_filter_req(sap_request *new_request, char *param);
+int is_filter_toggled_req(sap_request *new_request, char *param);
+int enable_filter_req(sap_request *new_request, char *param);
+int disable_filter_req(sap_request *new_request, char *param);
 
 /**
  * Maneja la respuesta correspondiente a un request
  */
-void handle_response(sap_request new_request, sap_response new_response, char * prev_message);
+void handle_response(sap_request new_request, sap_response new_response, char *prev_message);
 
 client_command_t client_commands[] = {
-        {.name="historic", .handler = historic_connections_req, .success_message="La cantidad de conexiones historicas es:"},
-        {.name="current", .handler = current_connections_req, .success_message="La cantidad de conexiones actuales es:"},
-        {.name="bytes", .handler = transfered_bytes_req, .success_message="La cantidad de bytes transferidos es:"},
-        {.name="getbuff", .handler = get_buff_size_req, .success_message="El tamaño del buffer es:"},
-        {.name="setbuff", .handler = set_buff_size_req, .success_message="Tamaño del buffer actualizado correctamente"},
-        {.name="gettimeout", .handler = get_timeout_req, .success_message="El timeout es:"},
-        {.name="settimeout", .handler = set_timeout_req, .success_message="Timeout actualizado correctamente"},
-        {.name="geterror", .handler = get_error_req, .success_message="La salida de error en filter es:"},
-        {.name="seterror", .handler = set_error_req, .success_message="La salida de error en filter fue actualizada"},
-        {.name="getfilter", .handler = get_filter_req, .success_message="El filtro utlizado es:"},
-        {.name="setfilter", .handler = set_filter_req, .success_message="Filtro actualizado correctamente"},
-        {.name="filter?", .handler = is_filter_toggled_req, .success_message="El filtro esta "},
-        {.name="enablefilter", .handler = enable_filter_req, .success_message="Filtro encendido"},
-        {.name="disablefilter", .handler = disable_filter_req, .success_message="Filtro apagado"},
+    {.name = "historic", .handler = historic_connections_req, .success_message = "La cantidad de conexiones historicas es:"},
+    {.name = "current", .handler = current_connections_req, .success_message = "La cantidad de conexiones actuales es:"},
+    {.name = "bytes", .handler = transfered_bytes_req, .success_message = "La cantidad de bytes transferidos es:"},
+    {.name = "getbuff", .handler = get_buff_size_req, .success_message = "El tamaño del buffer es:"},
+    {.name = "setbuff", .handler = set_buff_size_req, .success_message = "Tamaño del buffer actualizado correctamente"},
+    {.name = "gettimeout", .handler = get_timeout_req, .success_message = "El timeout es:"},
+    {.name = "settimeout", .handler = set_timeout_req, .success_message = "Timeout actualizado correctamente"},
+    {.name = "geterror", .handler = get_error_req, .success_message = "La salida de error en filter es:"},
+    {.name = "seterror", .handler = set_error_req, .success_message = "La salida de error en filter fue actualizada"},
+    {.name = "getfilter", .handler = get_filter_req, .success_message = "El filtro utlizado es:"},
+    {.name = "setfilter", .handler = set_filter_req, .success_message = "Filtro actualizado correctamente"},
+    {.name = "filter?", .handler = is_filter_toggled_req, .success_message = "El filtro esta "},
+    {.name = "enablefilter", .handler = enable_filter_req, .success_message = "Filtro encendido"},
+    {.name = "disablefilter", .handler = disable_filter_req, .success_message = "Filtro apagado"},
 
 };
 
 int go_on = 1;
 
-int main(int argc, const char* argv[]) {
+int main(int argc, const char *argv[])
+{
 
-    if (argc != 3){
-        fprintf(stderr,"Uso: client <manag_addr> <manag_port>");
+    if (argc != 3)
+    {
+        fprintf(stderr, "Uso: client <manag_addr> <manag_port>");
         exit(EXIT_FAILURE);
-
     }
 
-    int sockfd, valid_param,port, ip_type = ADDR_IPV4;
+    int sockfd, valid_param, port, ip_type = ADDR_IPV4;
     struct sockaddr_in servaddr;
     struct sockaddr_in6 servaddr6;
     char buffer_in[MAXLINE], buffer_out[MAXLINE], user_input[USER_INPUT_SIZE], *command_name, *param;
@@ -111,8 +112,9 @@ int main(int argc, const char* argv[]) {
     memset(&servaddr, 0, sizeof(servaddr));
     memset(&servaddr6, 0, sizeof(servaddr6));
 
-    if ((port = htons(atoi(argv[2]))) <= 0){
-        fprintf(stderr,"Puerto invalido");
+    if ((port = htons(atoi(argv[2]))) <= 0)
+    {
+        fprintf(stderr, "Puerto invalido");
         exit(EXIT_FAILURE);
     }
 
@@ -122,63 +124,75 @@ int main(int argc, const char* argv[]) {
         servaddr.sin_port = port;
         ip_type = ADDR_IPV4;
     }
-    else if(inet_pton(AF_INET6, argv[1], &servaddr6.sin6_addr) > 0){
+    else if (inet_pton(AF_INET6, argv[1], &servaddr6.sin6_addr) > 0)
+    {
         servaddr6.sin6_family = AF_INET6;
         servaddr6.sin6_port = port;
         ip_type = ADDR_IPV6;
     }
 
     // Creating socket file descriptor
-    if ((sockfd = socket(ip_type == ADDR_IPV4 ? AF_INET:AF_INET6, SOCK_DGRAM, 0)) < 0 ) {
-        log(ERROR,"Failed manager client socket creation");
+    if ((sockfd = socket(ip_type == ADDR_IPV4 ? AF_INET : AF_INET6, SOCK_DGRAM, 0)) < 0)
+    {
+        log(ERROR, "Failed manager client socket creation");
         exit(EXIT_FAILURE);
     }
 
     struct timeval tv;
     tv.tv_sec = TIMEOUT_SEC;
     tv.tv_usec = 0;
-    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
-        log(ERROR,"Failed manager client setsockopt");
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
+    {
+        log(ERROR, "Failed manager client setsockopt");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
 
-    while(go_on) {
+    while (go_on)
+    {
         command_name = param = NULL;
         printf("\033[0;32m");
         printf("sap_client >> ");
         printf("\033[0m");
         memset(user_input, 0, USER_INPUT_SIZE);
-        fgets(user_input,USER_INPUT_SIZE,stdin);
+        fgets(user_input, USER_INPUT_SIZE, stdin);
         // Remuevo \r\n o \n del final
         user_input[strcspn(user_input, "\r\n")] = 0;
         command_name = strtok(user_input, " ");
 
-        if (command_name != NULL) {
+        if (command_name != NULL)
+        {
             param = strtok(NULL, " ");
-        }else{
+        }
+        else
+        {
             command_name = "null command"; // TODO: Ver si ponemos una cte pero sin esto rompe cuando se manda una entrada vacia por que el command name queda en null para los strcmp.
         }
 
-        //Special case for help
-        if (strcmp(command_name, "help") == 0){
+        // Special case for help
+        if (strcmp(command_name, "help") == 0)
+        {
             help();
             continue;
         }
 
         int i;
-        for (i =0; i < COMMAND_TOTAL_COUNT; i++){
-            if (strcmp(command_name,client_commands[i].name) == 0){
-                valid_param = client_commands[i].handler(&request,param);
+        for (i = 0; i < COMMAND_TOTAL_COUNT; i++)
+        {
+            if (strcmp(command_name, client_commands[i].name) == 0)
+            {
+                valid_param = client_commands[i].handler(&req, param);
                 break;
             }
         }
-        if (i == COMMAND_TOTAL_COUNT){
+        if (i == COMMAND_TOTAL_COUNT)
+        {
             printf("Comando invalido, vea la lista de comandos ingresando 'help'\n");
             continue;
         }
-        if (valid_param < 0){
-            printf("Parametro invalido para el comando %s\n",command_name);
+        if (valid_param < 0)
+        {
+            printf("Parametro invalido para el comando %s\n", command_name);
             continue;
         }
 
@@ -189,26 +203,30 @@ int main(int argc, const char* argv[]) {
         memset(buffer_in, 0, MAXLINE);
         memset(buffer_out, 0, MAXLINE);
 
-        if (sap_request_to_buffer(buffer_out, &request, &req_size) < 0) {
+        if (sap_request_to_buffer(buffer_out, &req, &req_size) < 0)
+        {
             log(ERROR, "Error converting request to buffer");
         }
 
-        if (ip_type == ADDR_IPV4) {
+        if (ip_type == ADDR_IPV4)
+        {
             sendto(sockfd, buffer_out, req_size,
-                   MSG_CONFIRM, (const struct sockaddr *) &servaddr,
+                   MSG_CONFIRM, (const struct sockaddr *)&servaddr,
                    sizeof(servaddr));
 
-            resp_size = recvfrom(sockfd, (char *) buffer_in, MAXLINE,
-                         MSG_WAITALL, (struct sockaddr *) &servaddr,
-                         &len);
-        }else{
+            resp_size = recvfrom(sockfd, (char *)buffer_in, MAXLINE,
+                                 MSG_WAITALL, (struct sockaddr *)&servaddr,
+                                 &len);
+        }
+        else
+        {
             sendto(sockfd, buffer_out, req_size,
-                   MSG_CONFIRM, (const struct sockaddr *) &servaddr6,
+                   MSG_CONFIRM, (const struct sockaddr *)&servaddr6,
                    sizeof(servaddr6));
 
-            resp_size = recvfrom(sockfd, (char *) buffer_in, MAXLINE,
-                         MSG_WAITALL, (struct sockaddr *) &servaddr6,
-                         &len);
+            resp_size = recvfrom(sockfd, (char *)buffer_in, MAXLINE,
+                                 MSG_WAITALL, (struct sockaddr *)&servaddr6,
+                                 &len);
         }
 
         // Timeout
@@ -221,142 +239,168 @@ int main(int argc, const char* argv[]) {
             continue;
         }
 
-        if (sap_buffer_to_response(buffer_in, &response) < 0) {
+        if (sap_buffer_to_response(buffer_in, &resp) < 0)
+        {
             log(ERROR, "Error converting buffer to response");
             continue;
         }
 
-        handle_response(request,response,client_commands[i].success_message);
+        handle_response(req, resp, client_commands[i].success_message);
     }
 
     close(sockfd);
     return 0;
 }
 
-
-void build_blank_request(sap_request * new_request, op_code op_code){
+void build_blank_request(sap_request *new_request, op_code op_code)
+{
     new_request->v_type = SERVER_VERSION;
     new_request->req_id = req_id++;
     new_request->op_code = op_code;
     new_request->auth_id = AUTH;
 }
 
-void build_single_request(sap_request * new_request,op_code op_code,uint8_t single_data){
-    build_blank_request(new_request,op_code);
+void build_single_request(sap_request *new_request, op_code op_code, uint8_t single_data)
+{
+    build_blank_request(new_request, op_code);
     new_request->data.sap_single = single_data;
 }
 
-void build_short_request(sap_request * new_request,op_code op_code,uint16_t short_data){
-    build_blank_request(new_request,op_code);
+void build_short_request(sap_request *new_request, op_code op_code, uint16_t short_data)
+{
+    build_blank_request(new_request, op_code);
     new_request->data.sap_short = short_data;
 }
 
-void build_long_request(sap_request * new_request,op_code op_code,uint16_t long_data){
-    build_blank_request(new_request,op_code);
-    new_request->data.sap_long= long_data;
+void build_long_request(sap_request *new_request, op_code op_code, uint16_t long_data)
+{
+    build_blank_request(new_request, op_code);
+    new_request->data.sap_long = long_data;
 }
 
-void build_string_request(sap_request * new_request,op_code op_code, char* string ){
-    build_blank_request(new_request,op_code);
-    strcpy(new_request->data.string,string);
+void build_string_request(sap_request *new_request, op_code op_code, char *string)
+{
+    build_blank_request(new_request, op_code);
+    strcpy(new_request->data.string, string);
 }
 
-int historic_connections_req(sap_request * new_request, char * param){
-    build_single_request(new_request,OP_STATS,0);
+int historic_connections_req(sap_request *new_request, char *param)
+{
+    build_single_request(new_request, OP_STATS, 0);
     return 0;
 }
 
-int current_connections_req(sap_request * new_request, char * param){
-    build_single_request(new_request,OP_STATS,1);
+int current_connections_req(sap_request *new_request, char *param)
+{
+    build_single_request(new_request, OP_STATS, 1);
     return 0;
 }
 
-int transfered_bytes_req(sap_request * new_request, char * param){
-    build_single_request(new_request,OP_STATS,2);
+int transfered_bytes_req(sap_request *new_request, char *param)
+{
+    build_single_request(new_request, OP_STATS, 2);
     return 0;
 }
 
-int get_buff_size_req(sap_request * new_request, char * param){
-    build_blank_request(new_request,OP_GET_BUFF_SIZE);
+int get_buff_size_req(sap_request *new_request, char *param)
+{
+    build_blank_request(new_request, OP_GET_BUFF_SIZE);
     return 0;
 }
 
-int set_buff_size_req(sap_request * new_request, char * param){
-    if (param == NULL){
+int set_buff_size_req(sap_request *new_request, char *param)
+{
+    if (param == NULL)
+    {
         return -1;
     }
     int short_data = atoi(param);
-    if (short_data <= 0 || short_data > UINT16_MAX )
+    if (short_data <= 0 || short_data > UINT16_MAX)
         return -1;
-    build_short_request(new_request,OP_SET_BUFF_SIZE,(uint16_t )short_data);
+    build_short_request(new_request, OP_SET_BUFF_SIZE, (uint16_t)short_data);
     return 0;
 }
 
-int get_timeout_req(sap_request * new_request, char * param){
-    build_blank_request(new_request,OP_GET_TIMEOUT);
+int get_timeout_req(sap_request *new_request, char *param)
+{
+    build_blank_request(new_request, OP_GET_TIMEOUT);
     return 0;
 }
 
-int set_timeout_req(sap_request * new_request, char * param){
-    if (param == NULL){
+int set_timeout_req(sap_request *new_request, char *param)
+{
+    if (param == NULL)
+    {
         return -1;
     }
     int single_data = atoi(param);
-    if (single_data <= 0 || single_data > UINT8_MAX )
+    if (single_data <= 0 || single_data > UINT8_MAX)
         return -1;
-    build_single_request(new_request,OP_SET_TIMEOUT,(uint8_t)single_data);
+    build_single_request(new_request, OP_SET_TIMEOUT, (uint8_t)single_data);
     return 0;
 }
 
-int get_error_req(sap_request * new_request, char * param){
-    build_blank_request(new_request,OP_GET_ERROR_FILE);
+int get_error_req(sap_request *new_request, char *param)
+{
+    build_blank_request(new_request, OP_GET_ERROR_FILE);
     return 0;
 }
 
-int set_error_req(sap_request * new_request, char * param){
-    if (param == NULL){
-        return -1;
-    }
-    build_string_request(new_request,OP_SET_ERROR_FILE,param);
-    return 0;
-}
-
-int get_filter_req(sap_request * new_request, char * param){
-    build_blank_request(new_request,OP_GET_FILTER);
-    return 0;
-}
-
-int set_filter_req(sap_request * new_request, char * param){
-    if (param == NULL){
+int set_error_req(sap_request *new_request, char *param)
+{
+    if (param == NULL)
+    {
         return -1;
     }
-    build_string_request(new_request,OP_SET_FILTER,param);
+    build_string_request(new_request, OP_SET_ERROR_FILE, param);
     return 0;
 }
 
-int is_filter_toggled_req(sap_request * new_request, char * param){
-    build_blank_request(new_request,OP_IS_FILTER_WORKING);
+int get_filter_req(sap_request *new_request, char *param)
+{
+    build_blank_request(new_request, OP_GET_FILTER);
     return 0;
 }
 
-int enable_filter_req(sap_request * new_request, char * param){
-    build_single_request(new_request,OP_TOGGLE_FILTER,1);
-    return 0;
-}
-int disable_filter_req(sap_request * new_request, char * param){
-    build_single_request(new_request,OP_TOGGLE_FILTER,0);
+int set_filter_req(sap_request *new_request, char *param)
+{
+    if (param == NULL)
+    {
+        return -1;
+    }
+    build_string_request(new_request, OP_SET_FILTER, param);
     return 0;
 }
 
-void handle_response(sap_request new_request, sap_response new_response, char * prev_message){
+int is_filter_toggled_req(sap_request *new_request, char *param)
+{
+    build_blank_request(new_request, OP_IS_FILTER_WORKING);
+    return 0;
+}
 
-    if (new_request.req_id != new_response.req_id){
+int enable_filter_req(sap_request *new_request, char *param)
+{
+    build_single_request(new_request, OP_TOGGLE_FILTER, 1);
+    return 0;
+}
+int disable_filter_req(sap_request *new_request, char *param)
+{
+    build_single_request(new_request, OP_TOGGLE_FILTER, 0);
+    return 0;
+}
+
+void handle_response(sap_request new_request, sap_response new_response, char *prev_message)
+{
+
+    if (new_request.req_id != new_response.req_id)
+    {
         printf("\033[0;31m");
         printf("Error: La respuesta recibida no corresponde al pedido efectuado.\n");
         printf("\033[0m");
         return;
     }
-    if (new_response.status_code != 0){
+    if (new_response.status_code != 0)
+    {
         printf("\033[0;31m");
         printf("Error: %s.\n", sap_error(new_response.status_code));
         printf("\033[0m");
@@ -364,33 +408,37 @@ void handle_response(sap_request new_request, sap_response new_response, char * 
     }
     data_type_correspondence data_type = op_to_resp_data_type(new_response.op_code);
 
-    switch (data_type) {
-        case SAP_SINGLE:
-            if (new_response.op_code == OP_IS_FILTER_WORKING){
-                printf("%s %s",prev_message, new_response.data.sap_single == 0? "apagado":"encendido");
-            } else {
-                printf("%s %d", prev_message, new_response.data.sap_single);
-            }
-            break;
-        case SAP_SHORT:
-            printf("%s %d",prev_message,new_response.data.sap_short);
-            break;
-        case SAP_LONG:
-            printf("%s %d",prev_message,new_response.data.sap_long);
-            break;
-        case SAP_STRING:
-            printf("%s %s",prev_message,new_response.data.string);
-            break;
-        case SAP_BLANK:
-        default:
-            printf("%s",prev_message);
-            break;
+    switch (data_type)
+    {
+    case SAP_SINGLE:
+        if (new_response.op_code == OP_IS_FILTER_WORKING)
+        {
+            printf("%s %s", prev_message, new_response.data.sap_single == 0 ? "apagado" : "encendido");
+        }
+        else
+        {
+            printf("%s %d", prev_message, new_response.data.sap_single);
+        }
+        break;
+    case SAP_SHORT:
+        printf("%s %d", prev_message, new_response.data.sap_short);
+        break;
+    case SAP_LONG:
+        printf("%s %d", prev_message, new_response.data.sap_long);
+        break;
+    case SAP_STRING:
+        printf("%s %s", prev_message, new_response.data.string);
+        break;
+    case SAP_BLANK:
+    default:
+        printf("%s", prev_message);
+        break;
     }
     printf("\n");
-
 }
 
-void help(){
+void help()
+{
     printf("\nAqui la lista de comandos habilitados para el manejo de SAP, van todos en minuscula\n"
            "\thelp - Devuelve la lista de comandos disponibles.\n"
            "\thistoric - Devuelve la cantidad de conexiones historicas.\n"
