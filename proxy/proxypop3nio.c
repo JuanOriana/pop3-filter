@@ -717,7 +717,6 @@ unsigned on_read_ready_hello(struct selector_key *key){
 
     if(readed > 0){
         buffer_write_adv(&hello_origin->buffer,readed);
-
         hello_state = parse_hello(&hello_origin->hello_parser,&hello_origin->buffer);
         
 
@@ -761,6 +760,7 @@ unsigned on_write_ready_hello(struct selector_key *key){
     sended = send(key->fd,ptr,size,MSG_NOSIGNAL);
 
     if(sended>0){
+        pop3_proxy_state.bytes_transfered+= sended;
         buffer_read_adv(buffer,sended);
         if(hello_finished(hello_origin->hello_parser.current_state)){
             log(DEBUG,"Hello finished succesfully");
@@ -1274,6 +1274,7 @@ static unsigned send_to_client(struct selector_key *key,struct copy *copy){
     if(sended<0){
         shut_down_copy(copy,false);
     }else{
+        pop3_proxy_state.bytes_transfered+= max_size_to_write;
         buffer_read_adv(buffer,sended);
     }
 
