@@ -45,6 +45,7 @@ filter_parser_state filter_parser_feed(filter_parser * parser, const uint8_t c, 
     }
     if(parser->line_size++ == MAX_MSG_SIZE)
         parser->state = FILTER_ERROR;
+    return parser->state
 }
 
 static void filter_first_line_state (filter_parser * parser, char c, buffer * dest, bool parse,buffer * start_msg){
