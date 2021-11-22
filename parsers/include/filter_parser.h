@@ -19,7 +19,7 @@ typedef enum{
 
 typedef struct{
     size_t          line_size;    
-    size_t          state_size;
+    size_t          crl_state;
     filter_parser_state   state;
     bool first_time;
 } filter_parser;

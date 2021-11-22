@@ -16,7 +16,7 @@ void filter_parser_init(filter_parser * parser){
     parser->state = FILTER_FIRST_LINE;
     parser->first_time = true;
     parser->line_size = 0;
-    parser->state_size = 0; // TODO:crl_state
+    parser->crl_state = 0;
 }
 
 int filter_parser_is_done(const filter_parser_state state){
@@ -52,20 +52,20 @@ filter_parser_state filter_parser_feed(filter_parser * parser, const uint8_t c, 
                 buffer_write(dest, c);
             if(c == crlfMsg[2] && parser->line_size == 0) {
                 parser->state = FILTER_DOT;
-                parser->state_size = 3;
+                parser->crl_state = 3;
             } else if(c == crlfMsg[0]){ 
-                parser->state_size = 1;
+                parser->crl_state = 1;
             } else if(c == crlfMsg[1]) {
-                if(parser->state_size == 1) {
+                if(parser->crl_state == 1) {
                     parser->line_size = -1;
-                    parser->state_size = 0;
+                    parser->crl_state = 0;
                     if(parse) {
                         buffer_write(dest, crlfMsg[0]);
                         buffer_write(dest, crlfMsg[1]);
                     }
                 } else if(!parse) {
                     parser->line_size = -1;
-                    parser->state_size = 0;
+                    parser->crl_state = 0;
                     buffer_write(dest, crlfMsg[0]);
                     buffer_write(dest, crlfMsg[1]);
                 } else
@@ -78,18 +78,18 @@ filter_parser_state filter_parser_feed(filter_parser * parser, const uint8_t c, 
             if(parse) {
                 if(c == crlfMsg[3]) {
                     parser->state = FILTER_CRLF;
-                    parser->state_size = 4;
+                    parser->crl_state = 4;
                 } else if(c == crlfMsg[2]) {
                     buffer_write(dest, c);
                     parser->state = FILTER_MSG;
-                    parser->state_size = 0;
+                    parser->crl_state = 0;
                 } else
                     parser->state = FILTER_ERROR;
             } else {
                 parser->state = FILTER_MSG;
-                parser->state_size = 0;
+                parser->crl_state = 0;
                 if(c == crlfMsg[0]) {
-                    parser->state_size = 1;
+                    parser->crl_state = 1;
                 } else if(c == crlfMsg[1]) {
                     parser->state = FILTER_ERROR;
                 }

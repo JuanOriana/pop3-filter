@@ -787,6 +787,35 @@ static void set_enviroment_variables(connection *connection){
     setenv("POP3_SERVER",connection->origin_addr_humanized,1);
 }
 
+static void filter_close(struct selector_key *key){
+    log(DEBUG,"Closing filter");
+    connection * connection = ATTACHMENT(key);
+    struct filter_data * filter = &connection->filter;
+
+    if(filter->slave_proc_pid >0){
+         kill(filter->slave_proc_pid,SIGKILL);
+    }else{
+        return;
+    }
+
+    for(int i=0;i<2;i++){
+        if(filter->read_pipe[i] > 0){
+            selector_unregister_fd(key->s,filter->read_pipe[i]);
+            close(filter->read_pipe[i]);
+        }
+        if(filter->write_pipe[i] > 0){
+            selector_unregister_fd(key->s,filter->write_pipe[i]);
+            close(filter->write_pipe[i]);
+        }
+    }
+    free(filter->start_message->data);
+    free(filter->start_message);
+    memset(filter,0,sizeof(struct filter_data));
+    connection->filter.slave_proc_pid = -1;
+    connection->filter.state = FILTER_CLOSE;
+}
+static unsigned analize_process_response(connection * connection, buffer * buffer, bool interest_retr, bool to_new_command); // REMOVE TODO TODO:
+
 static void filter_init(struct selector_key * key){
     log(DEBUG,"Starting filter");
     connection * connection = ATTACHMENT(key);
@@ -852,19 +881,27 @@ static void filter_init(struct selector_key * key){
 
         if( (selector_fd_set_nio(filter->write_pipe[0]) < 0) || (selector_fd_set_nio(filter->read_pipe[1]) < 0)){
             log(ERROR,"Failed to set not blocking to filter sockets on proxy");
-            // TODO SI HAY QUE ABORTAR LA CONEXION O QUE.
+            filter_close(key);
+            return;
         }
 
         if( (selector_register(key->s,filter->write_pipe[0],&proxy_handler,OP_NOOP,connection)!= SELECTOR_SUCCESS) || (selector_register(key->s,filter->read_pipe[1],&proxy_handler,OP_NOOP,connection)!= SELECTOR_SUCCESS) )
         {
             log(ERROR,"Failed to register filter fds");
-            // TODO : VER Q MANEJO HACER ACA
+            filter_close(key);
+            return;
         }
-
         connection->references+=2;
     }else{
         log(ERROR,"Failed to fork filter proccess. Error: %s",strerror(errno));
-        // TODO: Manejar caso en el que se no se puede hacer el filter para que se lo mande directo al cliente!!
+        filter->state = FILTER_CLOSE;
+
+        close(filter->read_pipe[0]); 
+        close(filter->read_pipe[1]); 
+        close(filter->write_pipe[0]);
+        close(filter->write_pipe[1]);
+
+        analize_process_response(connection,connection->copy_origin.read_buffer,false,true);
     }
 
 }
@@ -1056,34 +1093,6 @@ unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
     return ret_value;
 }
 
-static void filter_close(struct selector_key *key){
-    log(DEBUG,"Closing filter");
-    connection * connection = ATTACHMENT(key);
-    struct filter_data * filter = &connection->filter;
-
-    if(filter->slave_proc_pid >0){
-         kill(filter->slave_proc_pid,SIGKILL);
-    }else{
-        return;
-    }
-
-    for(int i=0;i<2;i++){
-        if(filter->read_pipe[i] > 0){
-            selector_unregister_fd(key->s,filter->read_pipe[i]);
-            close(filter->read_pipe[i]);
-        }
-        if(filter->write_pipe[i] > 0){
-            selector_unregister_fd(key->s,filter->write_pipe[i]);
-            close(filter->write_pipe[i]);
-        }
-    }
-    free(filter->start_message->data);
-    free(filter->start_message);
-    memset(filter,0,sizeof(struct filter_data));
-    connection->filter.slave_proc_pid = -1;
-    connection->filter.state = FILTER_CLOSE;
-}
-
 unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
     size_t max_size_to_read;
     ssize_t readed;
@@ -1158,8 +1167,7 @@ static fd_interest compute_interest(struct selector_key *key, struct copy *copy,
 
     if (selector_set_interest(key->s, *copy->fd, ret) != SELECTOR_SUCCESS)
     {
-        log(ERROR,"Failed to set interests to fd in copy_compute_interests");
-        // TODO: Ver que manejo hacer
+        log(ERROR,"Failed to set interests to fd in copy_compute_interests"); 
     }
 
     return ret;
@@ -1335,8 +1343,6 @@ static unsigned write_to_filter(struct selector_key *key,struct copy *copy){
     }else if(sended == 0){
         // Filter sendded EOF
         filter_close(key);
-
-        /// TODO ANALIZAR que quedo en el buffer
     }else{
         // No hace falta avanzar el buffer.
         if(connection->command_response_parser.state == RESPONSE_INIT && !buffer_can_read(src)){
