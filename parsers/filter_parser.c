@@ -116,3 +116,27 @@ static void filter_crlf_state (filter_parser * parser, char c, buffer * dest, bo
     else
         parser->state = FILTER_ERROR;
 }
+
+
+filter_parser_state filter_parser_consume(filter_parser * parser, buffer * src, buffer * dest, bool skip,buffer * start_message) {
+    filter_parser_state state = parser->state;
+    size_t size;
+    buffer_write_ptr(dest, &size);
+
+    uint8_t c;
+    while(buffer_can_read(src) && size >= 2) {
+        if(!skip && buffer_can_read(start_message)){
+            c = buffer_read(start_message);
+        }else{
+            c = buffer_read(src);
+        }
+
+        state = filter_parser_feed(parser, c, dest, skip,start_message);
+        if(filter_parser_is_done(state)) {
+            break;
+        } else
+            buffer_write_ptr(dest, &size);
+    }
+
+    return state;
+}

@@ -329,7 +329,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     // Verifico si es el primero
     if (connection_pool == NULL)
     {
-        new_connection = malloc(sizeof(*new_connection)); // TODO CHECK NULL
+        new_connection = malloc(sizeof(*new_connection));
         if (new_connection == NULL)
         {
             return NULL;
