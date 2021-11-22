@@ -11,7 +11,6 @@ typedef enum{
     FILTER_FIRST_LINE,
     FILTER_MSG,
     FILTER_DOT,
-    FILTER_PRE_DOT,
     FILTER_CRLF,
     FILTER_DONE,
     FILTER_ERROR,
@@ -19,7 +18,7 @@ typedef enum{
 
 typedef struct{
     size_t          line_size;    
-    size_t          crl_state;
+    size_t          crlf_state;
     filter_parser_state   state;
     bool first_time;
 } filter_parser;
