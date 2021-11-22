@@ -328,7 +328,7 @@ void proxy_passive_accept(struct selector_key *key)
     }
     return;
 passivefinally:
-    if (err_msg != NULL)
+    if (err_msg != NULL) // Nunca deberia ser distinto de null pero se hace el chequeo igual.
         log(ERROR,"Passive accept fail: %s",err_msg);
     if (client_socket != -1)
         close(client_socket);
@@ -481,9 +481,6 @@ static unsigned on_connection_ready(struct selector_key *key)
         connection->error_data.err_msg = "-ERR Connection refused.\r\n";
         if (SELECTOR_SUCCESS == selector_set_interest(key->s, connection->client_fd, OP_WRITE)){
             ret = ERROR_W_MESSAGE_ST;
-        }
-        else{
-            ret = ERROR_ST;
         }
     }
     else if (SELECTOR_SUCCESS == selector_set_interest(key->s, key->fd, OP_READ))
@@ -650,20 +647,19 @@ static void connection_destroy_referenced(connection *connection)
     }
     else if (connection->references == 1)
     {
-        if (pop3_proxy_state.current_connections > 0)
+        if (pop3_proxy_state.current_connections > 0){
             pop3_proxy_state.current_connections--;
-        if (connection != NULL)
+        }
+        
+        if (connection_pool_size < MAX_POOL)
         {
-            if (connection_pool_size < MAX_POOL)
-            {
-                connection->next = connection_pool;
-                connection_pool = connection;
-                connection_pool_size++;
-            }
-            else
-            {
-                connection_destroy(connection);
-            }
+            connection->next = connection_pool;
+            connection_pool = connection;
+            connection_pool_size++;
+        }
+        else
+        {
+            connection_destroy(connection);
         }
     }
     else
@@ -716,7 +712,7 @@ unsigned on_read_ready_hello(struct selector_key *key){
         buffer_write_adv(&hello_origin->buffer,readed);
         hello_state = parse_hello(&hello_origin->hello_parser,&hello_origin->buffer);
 
-            if(hello_state!= HELLO_FINISHED_CORRECTLY){
+            if(hello_state!= HELLO_FINISHED_CORRECTLY && hello_state !=HELLO_FAILED){
                 if((SELECTOR_SUCCESS != selector_set_interest(key->s,connection->origin_fd,OP_NOOP)) || (SELECTOR_SUCCESS!=selector_set_interest(key->s,connection->client_fd, OP_WRITE))) // Despues del hello el proximo que habla es el cliente.
                 {
                     return ERROR_ST;
@@ -990,9 +986,12 @@ unsigned read_and_process_client(struct selector_key *key,struct copy *copy){
     {
         buffer_write_adv(buffer, readed);
     }
-    else
+    else if(readed==0)
     {
         shut_down_copy(copy,true);
+    }else{
+        log(ERROR,"Error when reading from client");
+        ret_value = ERROR_ST;
     }
     return ret_value;
 }
@@ -1082,12 +1081,15 @@ unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
         }
 
     }
-    else
+    else if(readed==0)
     {
         shut_down_copy(copy,true);
         if(filter->state == FILTER_WORKING && !buffer_can_read(connection->filter_buffer)){
             filter->state=FILTER_FINISHED_SENDING;
         }
+    }else{
+        log(ERROR,"Error when reading from origin");
+        ret_value = ERROR_ST;
     }
 
     return ret_value;
@@ -1130,6 +1132,7 @@ unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
         }
     }else{
         log(ERROR,"Error when reading from filter. Error = %s",strerror(errno));
+        ret_value = ERROR_ST;
     }
 
     return ret_value;

@@ -87,9 +87,7 @@ bool hello_finished(const hello_state state)
 {
     switch (state)
     {
-    case HELLO_FINISHED_CORRECTLY:
-        return true;
-    case HELLO_FAILED:
+    case HELLO_FINISHED_CORRECTLY || HELLO_FAILED:
         return true;
     default:
         return false;

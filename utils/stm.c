@@ -1,3 +1,4 @@
+
 /**
  * stm.c - pequeño motor de maquina de estados donde los eventos son los
  *         del selector.c
