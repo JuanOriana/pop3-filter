@@ -110,7 +110,6 @@ void parse_args(const int argc, char **argv, struct pop3_proxy_state *args)
             args->mng_port = port(optarg);
             break;
         case 't':
-            //TODO: CHECK IF FILTER IS VALID
             args->filter_activated = TRUE;
             memcpy(args->filter,optarg,strlen(optarg));
             break;

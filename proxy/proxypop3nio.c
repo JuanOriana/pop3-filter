@@ -390,7 +390,6 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     new_connection->next = NULL;
     new_connection->references = 1;
     memset(&new_connection->error_data,0,sizeof(new_connection->error_data));
-    new_connection->dns_resolution_current_iter = new_connection->dns_resolution = NULL;
 
     new_connection->stm.initial = RESOLVING;
     new_connection->stm.max_state = ERROR_W_MESSAGE_ST;
@@ -437,9 +436,6 @@ static unsigned start_connection_with_origin(fd_selector selector, connection *c
                 goto connectionfinally;
 
             connection->references += 1;
-        }
-        else{
-            goto connectionfinally;
         }
     }
     else
@@ -612,17 +608,6 @@ static unsigned dns_resolve_done(struct selector_key *key)
     struct connection *connection = ATTACHMENT(key);
     int ret_val = ERROR_ST;
 
-    // Nothing to resolve!
-    if (connection->dns_resolution_current_iter == NULL) {
-        log(ERROR, "Hostname didnt resolve to any valid IP address.");
-        connection->error_data.err_msg = "-ERR Connection refused.\r\n";
-        if (SELECTOR_SUCCESS != selector_set_interest(key->s, connection->client_fd, OP_WRITE)) {
-            ret_val = ERROR_ST;
-        }else {
-            ret_val = ERROR_W_MESSAGE_ST;
-        }
-    }
-
     while (connection->dns_resolution_current_iter != NULL)
     {
         // connection->origin_fd = new_server_socket;
@@ -648,7 +633,6 @@ static void connection_destroy(connection *connection)
     // CLOSE SOCKETS? 
     close(connection->origin_fd);
     close(connection->client_fd);
-    // TODO: Ver si metemos el destroy filter aca
     log(DEBUG,"Closing connection");
     free(connection->read_buffer->data);
     free(connection->read_buffer);
@@ -781,7 +765,7 @@ unsigned on_write_ready_hello(struct selector_key *key){
         buffer_read_adv(buffer,sended);
         if(hello_finished(hello_origin->hello_parser.current_state)){
             log(DEBUG,"Hello finished succesfully");
-            if((SELECTOR_SUCCESS == selector_set_interest(key->s,connection->origin_fd,OP_NOOP))&& (SELECTOR_SUCCESS == selector_set_interest(key->s,connection->client_fd,OP_READ))) // TODO: CHEQUEAR SI ES CORRECTO ESTE INTERES DE CLIENT
+            if((SELECTOR_SUCCESS == selector_set_interest(key->s,connection->origin_fd,OP_NOOP))&& (SELECTOR_SUCCESS == selector_set_interest(key->s,connection->client_fd,OP_READ)))
             {
                 return COPYING;
             }else{
@@ -843,7 +827,6 @@ static void filter_init(struct selector_key * key){
 
         set_enviroment_variables(connection); // Seteamos las variables de entorno que algunos filters necesitan
 
-        // TODO: que pasa si cambia el filter en el medio?
         if(execl("/bin/sh","sh","-c",pop3_proxy_state.filter,(char * )0) < 0){
             log(ERROR,"Executing command");
             close(filter->read_pipe[0]);
@@ -918,20 +901,20 @@ static void on_arrival_copying(const unsigned state, struct selector_key *key)
     copy_client->fd = &connection->client_fd;
     copy_client->read_buffer = connection->read_buffer;
     copy_client->write_buffer = connection->write_buffer;
-    copy_client->duplex = OP_READ | OP_WRITE; // TODO: Asignar dependiendo de las reglas de pop 3
+    copy_client->duplex = OP_READ | OP_WRITE;
     copy_client->other = copy_origin;
     copy_client->target = CLIENT;
 
     copy_origin->fd = &connection->origin_fd;
     copy_origin->read_buffer = connection->write_buffer;
     copy_origin->write_buffer = connection->read_buffer;
-    copy_origin->duplex = OP_READ | OP_WRITE; // TODO: Asignar dependiendo de las reglas de pop 3
+    copy_origin->duplex = OP_READ | OP_WRITE;
     copy_origin->other = copy_client;
     copy_origin->target =ORIGIN;
 
     copy_filter->read_buffer = connection->filter_buffer;
     copy_filter->write_buffer = connection->write_buffer;
-    copy_filter->duplex = OP_READ | OP_WRITE; // TODO: Asignar dependiendo de las reglas de pop 3
+    copy_filter->duplex = OP_READ | OP_WRITE;
     copy_filter->other = NULL;
     copy_filter->target = FILTER;
 
@@ -1176,7 +1159,7 @@ static fd_interest compute_interest(struct selector_key *key, struct copy *copy,
     if (selector_set_interest(key->s, *copy->fd, ret) != SELECTOR_SUCCESS)
     {
         log(ERROR,"Failed to set interests to fd in copy_compute_interests");
-        abort();// TODO: VER SI CORRESPONDE ABORTAR
+        // TODO: Ver que manejo hacer
     }
 
     return ret;
@@ -1186,7 +1169,7 @@ static fd_interest client_compute_interest(struct selector_key *key)
     connection *connection = ATTACHMENT(key);
     struct copy *copy = &connection->copy_client;
     
-    bool writeFromOrigin = buffer_can_read(copy->write_buffer) && (!(connection->filter.state == FILTER_START) ||connection->filter.state == FILTER_CLOSE); //TODO: REVISAR ESTO ANTES NO SE NEGABA EL FILTER_START// Todavia no esta el filtro
+    bool writeFromOrigin = buffer_can_read(copy->write_buffer) && (!(connection->filter.state == FILTER_START) ||connection->filter.state == FILTER_CLOSE);
 
     bool writeFromFilter = buffer_can_read(connection->copy_filter.read_buffer) && (connection->filter.state == FILTER_WORKING ||connection->filter.state == FILTER_FINISHED_SENDING);
 

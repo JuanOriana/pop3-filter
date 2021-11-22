@@ -72,7 +72,7 @@ hello_state hello_parser_input(hello_parser *parser, uint8_t readed_char)
         break;
 
     default:
-        break; // TODO: ver si hace falta agregar algo aca
+        break;
     }
 
     if (parser->index++ == HELLO_MAX_MSG_SIZE)
