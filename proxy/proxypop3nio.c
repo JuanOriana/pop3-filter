@@ -870,7 +870,7 @@ static void filter_init(struct selector_key * key){
         close(filter->read_pipe[0]);
         filter->read_pipe[0] = -1;
 
-        uint8_t * aux = malloc(sizeof(char) * START_MESSAGE_SIZE);
+        uint8_t * aux = malloc(sizeof(uint8_t) * START_MESSAGE_SIZE);
         filter->start_message = malloc(sizeof(buffer));
         buffer_init(filter->start_message,START_MESSAGE_SIZE,aux);
 
