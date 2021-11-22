@@ -12,7 +12,6 @@
 #include "../utils/include/selector.h"
 
 #define SERVER_VERSION SAP_V_1_0_0
-#define AUTH 0
 #define MAX_LINE 1024
 
 /*
@@ -74,7 +73,7 @@ void manager_passive_accept(struct selector_key *key)
         log(ERROR,"Error converting buffer to request");
     }
 
-    if (request.auth_id != AUTH){
+    if (request.auth_id != pop3_proxy_state.auth_tk){
         build_blank_response_with_status(&response,request,SC_UNAUTHORIZED);
     }
     else if (request.v_type > SERVER_VERSION){

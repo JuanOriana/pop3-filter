@@ -74,6 +74,9 @@ void parse_args(const int argc, char **argv, struct pop3_proxy_state *args)
     args->bytes_transfered = 0;
     args->version_number = DEFAULT_PROXY_POP3_VERSION_NUMBER;
     args->filter_activated = FALSE;
+    char * stringed_auth = getenv("SAP_AUTH");
+    args->auth_tk = stringed_auth == NULL ? 0 : atoi(stringed_auth);
+    printf("AAAA %s\n",stringed_auth);
 
     int c;
 

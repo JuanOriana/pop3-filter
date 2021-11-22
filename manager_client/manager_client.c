@@ -16,7 +16,6 @@
 #define MAXLINE 2048
 #define USER_INPUT_SIZE 100
 #define SERVER_VERSION SAP_V_1_0_0
-#define AUTH 0
 #define TIMEOUT_SEC 5
 
 // For Mac OS
@@ -94,6 +93,7 @@ client_command_t client_commands[] = {
 };
 
 int go_on = 1;
+uint32_t auth_tk = 0;
 
 int main(int argc, const char *argv[])
 {
@@ -103,6 +103,9 @@ int main(int argc, const char *argv[])
         fprintf(stderr, "Uso: client <manag_addr> <manag_port>");
         exit(EXIT_FAILURE);
     }
+
+    char * stringed_auth = getenv("SAP_AUTH");
+    auth_tk = stringed_auth == NULL ? 0 : atoi(stringed_auth);
 
     int sockfd, valid_param, port, ip_type = ADDR_IPV4;
     struct sockaddr_in servaddr;
@@ -257,7 +260,7 @@ void build_blank_request(sap_request *new_request, op_code op_code)
     new_request->v_type = SERVER_VERSION;
     new_request->req_id = req_id++;
     new_request->op_code = op_code;
-    new_request->auth_id = AUTH;
+    new_request->auth_id = auth_tk;
 }
 
 void build_single_request(sap_request *new_request, op_code op_code, uint8_t single_data)
