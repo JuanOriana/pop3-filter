@@ -424,7 +424,7 @@ void handle_response(sap_request new_request, sap_response new_response, char *p
         printf("%s %d", prev_message, new_response.data.sap_short);
         break;
     case SAP_LONG:
-        printf("%s %ld", prev_message, new_response.data.sap_long);
+        printf("%s %d", prev_message, new_response.data.sap_long);
         break;
     case SAP_STRING:
         printf("%s %s", prev_message, new_response.data.string);
