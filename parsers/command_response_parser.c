@@ -48,7 +48,7 @@ command_response_state command_response_parser_feed(command_response_parser * pa
     if(current_command == NULL)
         parser->state = RESPONSE_ERROR;
 
-    if(parser->state > RESPONSE_ERROR) {
+    if(parser->state > RESPONSE_ERROR) {// Nunca deberia entrar en este caso pero se deja por claridad
         log(ERROR,"Response parser not reconize state: %d", parser->state);
     }
     else {

@@ -297,7 +297,7 @@ void proxy_passive_accept(struct selector_key *key)
         blocking_key->data = new_connection_instance;
 
         pthread_t thread_id;
-        if (pthread_create(&thread_id, 0, dns_resolve_blocking, blocking_key) == -1)
+        if (pthread_create(&thread_id, 0, dns_resolve_blocking, blocking_key) !=0)
         {
             new_connection_instance->error_data.err_msg="-ERR can't resolve destination.\r\n";
             if(SELECTOR_SUCCESS != selector_set_interest(key->s, new_connection_instance->client_fd, OP_WRITE)){
@@ -385,7 +385,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     command_parser_init(&new_connection->command_parser);
     command_response_parser_init(&new_connection->command_response_parser);
     new_connection->current_command = command;
-    command->type = CMD_NOT_RECOGNIZED;
+    new_connection->current_command->type = CMD_NOT_RECOGNIZED;
     new_connection->dns_resolution_current_iter = new_connection->dns_resolution = NULL;
 
     return new_connection;
@@ -701,13 +701,11 @@ unsigned on_read_ready_hello(struct selector_key *key){
    
     readed = recv(key->fd,ptr,size,0);
     
-     ptr_write = buffer_write_ptr(&hello_client->buffer,&size);
-
-     memcpy(ptr_write,ptr,readed);
-     buffer_write_adv(&hello_client->buffer,readed);
-
+    ptr_write = buffer_write_ptr(&hello_client->buffer,&size);
 
     if(readed > 0){
+        memcpy(ptr_write,ptr,readed); // Se le copia al cliente lo leido
+        buffer_write_adv(&hello_client->buffer,readed);
         buffer_write_adv(&hello_origin->buffer,readed);
         hello_state = parse_hello(&hello_origin->hello_parser,&hello_origin->buffer);
 

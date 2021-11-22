@@ -80,7 +80,7 @@ command_state command_parser_feed(command_parser * parser, const char c, bool * 
             parser->invalid_type[i] = false;
     }
 
-    if (parser->state > COMMAND_ERROR){
+    if (parser->state > COMMAND_ERROR){ // Nunca deberia entrar en este caso pero se deja por claridad
         log(ERROR,"Command parser not reconize state: %d", parser->state);
     }
     else{
