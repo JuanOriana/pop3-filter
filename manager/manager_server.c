@@ -191,10 +191,10 @@ void toggle_filter_resp(sap_response * new_response, sap_request new_request){
         build_blank_response_with_status(new_response,new_request,SC_NO_FILTER);
     } else{
         build_blank_response(new_response,new_request);
-    }
-    if(new_request.data.sap_single == 0){
-        pop3_proxy_state.filter_activated = false;
-    } else{
-        pop3_proxy_state.filter_activated = true;
+        if(new_request.data.sap_single == 0){
+            pop3_proxy_state.filter_activated = false;
+        } else{
+            pop3_proxy_state.filter_activated = true;
+        }
     }
 }

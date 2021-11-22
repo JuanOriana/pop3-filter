@@ -86,7 +86,7 @@ client_command_t client_commands[] = {
     {.name = "seterror", .handler = set_error_req, .success_message = "La salida de error en filter fue actualizada"},
     {.name = "getfilter", .handler = get_filter_req, .success_message = "El filtro utlizado es:"},
     {.name = "setfilter", .handler = set_filter_req, .success_message = "Filtro actualizado correctamente"},
-    {.name = "filter?", .handler = is_filter_toggled_req, .success_message = "El filtro esta "},
+    {.name = "filter?", .handler = is_filter_toggled_req, .success_message = "El filtro esta"},
     {.name = "enablefilter", .handler = enable_filter_req, .success_message = "Filtro encendido"},
     {.name = "disablefilter", .handler = disable_filter_req, .success_message = "Filtro apagado"},
 
