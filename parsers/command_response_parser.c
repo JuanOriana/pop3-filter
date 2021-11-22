@@ -64,7 +64,7 @@ command_response_state command_response_parser_consume(command_response_parser *
     command_response_state state = parser->state;
     *errored = false;
 
-    for(int i = 0; i < n_to_read; i++) {
+    for(int i = 0; i < (int)n_to_read; i++) {
         const uint8_t c = char_buffer[i];
         state = command_response_parser_feed(parser, c, command_to_respond);
         if(state == RESPONSE_ERROR) {
@@ -82,7 +82,7 @@ command_response_state command_response_parser_consume_until(command_response_pa
     // if(to_new_commanc && state == RESPONSE_INIT)
     //     return state;
     
-    for(int i = 0; i < n_to_read; i++) {
+    for(int i = 0; i < (int)n_to_read; i++) {
         const uint8_t c = char_buffer[i];
         state = command_response_parser_feed(parser, c, command_to_respond);
         if(state == RESPONSE_ERROR) {

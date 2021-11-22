@@ -1,4 +1,4 @@
-CFLAGS = -g --std=c11 -pedantic -fsanitize=address  -Wall -Wextra -Werror -Wno-unused-parameter -Wno-implicit-fallthrough -D_POSIX_C_SOURCE=200809L -pthread
+CFLAGS = -g --std=c11 -fsanitize=address  -Wall -Wextra -Werror -Wno-unused-parameter -Wno-implicit-fallthrough -D_POSIX_C_SOURCE=200809L -pthread
 OBJECTS =  ./utils/buffer.o ./utils/logger.o ./utils/selector.o ./utils/stm.o ./proxy/proxypop3nio.o ./utils/netutils.o ./parsers/hello_parser.o ./parsers/command_parser.o ./parsers/command_response_parser.o ./manager/sap.o ./manager/manager_server.o ./parsers/filter_parser.o
 
 all: ${OBJECTS}
@@ -9,7 +9,7 @@ all: ${OBJECTS}
 
 
 clean:
-	rm -r -f *.o  main report.tasks $(COMMON);
+	rm -r -f *.o ./parsers/*.o ./utils/*.o ./proxy/*.o ./manager/*.o ./manager_client/*.o pop3filter ./manager_client/client $(COMMON);
 
 
 .PHONY =all clean subdirs
