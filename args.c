@@ -61,7 +61,7 @@ void parse_args(const int argc, char **argv, struct pop3_proxy_state *args)
 
     args->buff_size = DEFAULT_BUFF_SIZE;
     args->timeout = DEFAULT_TIMEOUT;
-    memcpy(args->error_file,DEFAULT_ERROR_FILE,strlen(DEFAULT_ERROR_FILE));
+    strcpy(args->error_file,DEFAULT_ERROR_FILE);
     args->pop3_proxy_addr = DEFAULT_PROXY_ADDR;
     args->proxy_on_both = true;
     args->pop3_proxy_port = DEFAULT_PROXY_PORT;
@@ -93,7 +93,7 @@ void parse_args(const int argc, char **argv, struct pop3_proxy_state *args)
             usage(argv[0]);
             break;
         case 'e':
-            memcpy(args->error_file,optarg,strlen(optarg));
+            strcpy(args->error_file,optarg);
             break;
         case 'l':
             args->pop3_proxy_addr = optarg;
@@ -114,7 +114,7 @@ void parse_args(const int argc, char **argv, struct pop3_proxy_state *args)
             break;
         case 't':
             args->filter_activated = TRUE;
-            memcpy(args->filter,optarg,strlen(optarg));
+            strcpy(args->filter,optarg);
             break;
         case 'v':
             version();

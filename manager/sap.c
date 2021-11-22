@@ -1,3 +1,4 @@
+
 #include "./include/sap.h"
 #include <arpa/inet.h>
 #include <stdlib.h>
@@ -253,8 +254,10 @@ static int get_packet_size(packet_type packet_type, op_code op_code, char* data)
             break;
         case SAP_LONG:
             size+=sizeof(uint32_t);
+            break;
         case SAP_STRING:
             size += data!=NULL?strlen(data):0;
+            break;
         case SAP_BLANK:
         default:
             size+=0;

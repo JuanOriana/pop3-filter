@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,10 +15,10 @@ typedef struct command_data {
 } command_data;
 
 #define IS_MULTILINE(command, args_size) (command->type == CMD_CAPA       \
-                ||  (command->type == CMD_LIST && args_size == 0)         \
-                ||  (command->type == CMD_TOP  && args_size == 2)         \
-                ||  (command->type == CMD_RETR && args_size == 1)         \
-                ||  (command->type == CMD_UIDL && args_size == 0))
+                ||  (command->type == CMD_LIST && (args_size == 0))         \
+                ||  (command->type == CMD_TOP  && (args_size == 2))         \
+                ||  (command->type == CMD_RETR && (args_size == 1))         \
+                ||  (command->type == CMD_UIDL && (args_size == 0)))
 
 static const command_data all_command_data[] = {
         {
