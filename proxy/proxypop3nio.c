@@ -4,13 +4,10 @@
 #include <netdb.h>
 #include <errno.h>
 #include <unistd.h>
-#include <arpa/inet.h>
 #include <pthread.h>
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/time.h>
-#include <limits.h>
 #include <fcntl.h>
 #include "../include/args.h"
 #include "../utils/include/logger.h"
@@ -26,8 +23,6 @@
 #include "../parsers/include/filter_parser.h"
 
 
-#define MAX_SOCKETS 30
-#define BUFFSIZE 2048
 #define ADDR_STRING_BUFF_SIZE 64
 #define MAX_POOL 50
 #define START_MESSAGE_SIZE 30
@@ -48,13 +43,9 @@ struct copy
 {
     // El file descriptor del otro.
     int *fd;
-
     buffer *read_buffer, *write_buffer;
-
     fd_interest duplex;
-
     targets target;
-
     struct copy *other;
 };
 
@@ -142,8 +133,6 @@ typedef struct connection
     struct connection *next;
 } connection;
 
-// static unsigned dns_resolve_done(struct selector_key key);
-
 typedef enum
 {
     RESOLVING,
@@ -162,9 +151,6 @@ typedef struct state_definition state_definition;
 /** obtiene el struct (connection *) desde la llave de selección  */
 #define ATTACHMENT(key) ((struct connection *)(key)->data)
 
-/* declaración forward de los handlers de selección de una conexión
- * establecida entre un cliente y el proxy.
- */
 
 struct connection *connection_pool;
 int connection_pool_size = 0;
@@ -185,8 +171,6 @@ static const struct fd_handler proxy_handler = {
     .handle_time_out = proxy_time_out,
 };
 
-static void analize_response(connection * connection);
-
 unsigned on_read_ready_copying(struct selector_key *key);
 unsigned on_write_ready_copying(struct selector_key *key);
 unsigned on_read_ready_hello(struct selector_key *key);
@@ -198,6 +182,11 @@ static void on_arrival_copying(const unsigned state, struct selector_key *key);
 static void on_arrival_hello(const unsigned state, struct selector_key *key);
 static unsigned dns_resolve_done(struct selector_key *key);
 static unsigned send_err_msg(struct selector_key *key);
+static void analize_response(connection * connection);
+static unsigned analize_process_response(connection * connection, buffer * buffer, bool interest_retr, bool to_new_command);
+struct connection *new_connection(int client_fd, address_representation origin_address_representation);
+static unsigned start_connection_with_origin(fd_selector selector, connection *connection);
+static void *dns_resolve_blocking(void *data);
 
 static const struct state_definition client_states[] = {
     {
@@ -242,25 +231,18 @@ static const struct state_definition client_states[] = {
     }};
 
 
-struct connection *new_connection(int client_fd, address_representation origin_address_representation);
-static void connection_destroy(connection *connection);
-static unsigned start_connection_with_origin(fd_selector selector, connection *connection);
-static void *dns_resolve_blocking(void *data);
-//static void *connection_close_select(struct selector_key *key);
-
 
 void proxy_passive_accept(struct selector_key *key)
 {
-    struct sockaddr_storage client_address; // Client address
-    // Set length of client address structure (in-out parameter)
+    struct sockaddr_storage client_address;
     socklen_t client_address_len = sizeof(client_address);
     address_representation *origin_representation = (address_representation *)key->data;
     selector_status ss = SELECTOR_SUCCESS;
     connection *new_connection_instance = NULL;
     char * err_msg;
 
-    // Wait for a client to connect
-    int client_socket = accept(key->fd, (struct sockaddr *)&client_address, &client_address_len); // TODO : Setear flag de no bloqueante
+    // ESperar la conexion del cliente
+    int client_socket = accept(key->fd, (struct sockaddr *)&client_address, &client_address_len);
     if (client_socket < 0)
     {
         err_msg = "cant accept client connection";
@@ -277,7 +259,7 @@ void proxy_passive_accept(struct selector_key *key)
     new_connection_instance = new_connection(client_socket, *origin_representation);
     if (new_connection_instance == NULL)
     {
-        err_msg = "couldnt create new connection";
+        err_msg = "couldn't create new connection";
         goto passivefinally;
 
     }
@@ -340,9 +322,9 @@ passivefinally:
 struct connection *new_connection(int client_fd, address_representation origin_address_representation)
 {
     connection *new_connection;
-
     buffer *read_buf, *write_buf,*filter_buf,*filter_parser_buffer;
     uint8_t *direct_buff, *direct_buff_origin,*direct_buff_filter,*direct_filter_parser_buffer;
+    command_instance * command;
 
     // Verifico si es el primero
     if (connection_pool == NULL)
@@ -360,11 +342,13 @@ struct connection *new_connection(int client_fd, address_representation origin_a
         read_buf = malloc(sizeof(buffer));
         buffer_init(read_buf, pop3_proxy_state.buff_size, direct_buff);
         write_buf = malloc(sizeof(buffer));
-        buffer_init(write_buf, pop3_proxy_state.buff_size, direct_buff_origin); // Errores?
+        buffer_init(write_buf, pop3_proxy_state.buff_size, direct_buff_origin);
         filter_buf = malloc(sizeof(buffer));
-        buffer_init(filter_buf, pop3_proxy_state.buff_size, direct_buff_filter); // Errores?
+        buffer_init(filter_buf, pop3_proxy_state.buff_size, direct_buff_filter);
         filter_parser_buffer = malloc(sizeof(buffer));
         buffer_init(filter_parser_buffer, pop3_proxy_state.buff_size, direct_filter_parser_buffer);
+        command = malloc(sizeof(command_instance));
+
     }
     else
     {
@@ -374,6 +358,7 @@ struct connection *new_connection(int client_fd, address_representation origin_a
         write_buf = new_connection->write_buffer;
         filter_buf = new_connection->filter_buffer;
         filter_parser_buffer = new_connection->filter_parser_buffer;
+        command = new_connection->current_command;
         buffer_reset(read_buf);
         buffer_reset(write_buf);
         buffer_reset(filter_buf);
@@ -390,20 +375,18 @@ struct connection *new_connection(int client_fd, address_representation origin_a
     new_connection->next = NULL;
     new_connection->references = 1;
     memset(&new_connection->error_data,0,sizeof(new_connection->error_data));
-
     new_connection->stm.initial = RESOLVING;
     new_connection->stm.max_state = ERROR_W_MESSAGE_ST;
     new_connection->stm.states = client_states;
     stm_init(&new_connection->stm);
-
     new_connection->filter.slave_proc_pid = -1;
-
     new_connection->session.last_used = time(NULL);
-
-    new_connection->current_command = malloc(sizeof(command_instance)); // TODO: VER SI VA ACA 
     new_connection->is_awaiting_response_from_origin = false;
     command_parser_init(&new_connection->command_parser);
     command_response_parser_init(&new_connection->command_response_parser);
+    new_connection->current_command = command;
+    command->type = CMD_NOT_RECOGNIZED;
+    new_connection->dns_resolution_current_iter = new_connection->dns_resolution = NULL;
 
     return new_connection;
 }
@@ -430,12 +413,13 @@ static unsigned start_connection_with_origin(fd_selector selector, connection *c
             selector_status ss = selector_set_interest(selector, connection->client_fd, OP_NOOP);
             if (ss != SELECTOR_SUCCESS)
                 goto connectionfinally;
-            // Hay que usar OP_WRITE para esperar la conexion.
             ss = selector_register(selector, connection->origin_fd, &proxy_handler, OP_WRITE, connection);
             if (ss != SELECTOR_SUCCESS)
                 goto connectionfinally;
-
             connection->references += 1;
+        }
+        else{
+            goto connectionfinally;
         }
     }
     else
@@ -507,7 +491,7 @@ proxy_read(struct selector_key *key)
         return;
     }
     struct state_machine *stm = &ATTACHMENT(key)->stm;
-    ATTACHMENT(key)->session.last_used = time(NULL); // Update the last time used
+    ATTACHMENT(key)->session.last_used = time(NULL);
     const proxy_state st =  stm_handler_read(stm, key);
 
     if(ERROR_ST == st || DONE == st) {
@@ -519,7 +503,7 @@ static void
 proxy_write(struct selector_key *key)
 {
     struct state_machine *stm = &ATTACHMENT(key)->stm;
-    ATTACHMENT(key)->session.last_used = time(NULL); // Update the last time used
+    ATTACHMENT(key)->session.last_used = time(NULL);
     const proxy_state st = stm_handler_write(stm, key);
     if (st == ERROR_ST || st == DONE)
     {
@@ -608,6 +592,17 @@ static unsigned dns_resolve_done(struct selector_key *key)
     struct connection *connection = ATTACHMENT(key);
     int ret_val = ERROR_ST;
 
+    // Nothing to resolve!
+    if (connection->dns_resolution_current_iter == NULL) {
+        log(ERROR, "Hostname didnt resolve to any valid IP address.");
+        connection->error_data.err_msg = "-ERR Connection refused.\r\n";
+        if (SELECTOR_SUCCESS != selector_set_interest(key->s, connection->client_fd, OP_WRITE)) {
+            ret_val = ERROR_ST;
+        }else {
+            ret_val = ERROR_W_MESSAGE_ST;
+        }
+    }
+
     while (connection->dns_resolution_current_iter != NULL)
     {
         // connection->origin_fd = new_server_socket;
@@ -636,9 +631,13 @@ static void connection_destroy(connection *connection)
     log(DEBUG,"Closing connection");
     free(connection->read_buffer->data);
     free(connection->read_buffer);
-
     free(connection->write_buffer->data);
     free(connection->write_buffer);
+    free(connection->filter_buffer->data);
+    free(connection->filter_buffer);
+    free(connection->filter_parser_buffer->data);
+    free(connection->filter_parser_buffer);
+    free(connection->current_command);
     free(connection);
 }
 
@@ -646,7 +645,7 @@ static void connection_destroy_referenced(connection *connection)
 {
     if (connection == NULL)
     {
-        log(ERROR,"Received NULL connection");   // nada para hacer
+        log(ERROR,"Received NULL connection");
     }
     else if (connection->references == 1)
     {
@@ -740,7 +739,7 @@ unsigned on_read_ready_hello(struct selector_key *key){
 
     }else{
         shutdown(key->fd,SHUT_RD);
-        log(ERROR,"Hello recv recieved error."); // can be that recieved 0.
+        log(ERROR,"Hello recv recieved error.");
         connection->error_data.err_msg = "-ERR HELLO FAILED.\r\n";
         if (SELECTOR_SUCCESS != selector_set_interest(key->s, connection->client_fd, OP_WRITE))
             return ERROR_ST;
@@ -814,7 +813,6 @@ static void filter_close(struct selector_key *key){
     connection->filter.slave_proc_pid = -1;
     connection->filter.state = FILTER_CLOSE;
 }
-static unsigned analize_process_response(connection * connection, buffer * buffer, bool interest_retr, bool to_new_command); // REMOVE TODO TODO:
 
 static void filter_init(struct selector_key * key){
     log(DEBUG,"Starting filter");
@@ -1045,6 +1043,7 @@ static void analize_response(connection * connection) {
                 username = get_user(*current);
                 username_len = strlen(username) + 1;  //checkear size mayor 40
                 memcpy(connection->session.name, username, username_len);
+                log(DEBUG,"Attempting to log user: %s", connection->session.name);
             } else if(current->type == CMD_PASS && current->indicator) {
                 log(DEBUG,"Logged user: %s", connection->session.name);
                 connection->session.is_logged = true;
@@ -1062,15 +1061,11 @@ static void analize_response(connection * connection) {
 unsigned read_and_process_origin(struct selector_key *key,struct copy *copy){
     connection * connection = ATTACHMENT(key);
     struct filter_data * filter = &connection->filter;
-
     size_t max_size_to_read;
     ssize_t readed;
     buffer *buffer = copy->read_buffer; ;
     unsigned ret_value = COPYING;
-
-     
     uint8_t *ptr = buffer_write_ptr(buffer, &max_size_to_read);
-
     readed = recv(key->fd, ptr, max_size_to_read, 0);
        
     if (readed > 0)
@@ -1100,7 +1095,6 @@ unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
     unsigned ret_value = COPYING;
     connection *connection = ATTACHMENT(key);
 
-
     buffer *src = connection->filter_parser_buffer;
     buffer_reset(src); // Limpiamos el buffer ya que solo se usa como estructura auxiliar
     // Leo lo que mando el filter con el buffer auxiliar asi mando la respuesta parseada al cliente
@@ -1108,7 +1102,6 @@ unsigned read_and_process_filter(struct selector_key *key,struct copy *copy){
     errno=0;
     readed = read(key->fd, ptr, max_size_to_read);
 
-       
     if (readed > 0)
     {
         buffer_write_adv(src, readed);
@@ -1312,6 +1305,7 @@ static unsigned send_to_origin(struct selector_key *key,struct copy *copy){
         log(DEBUG,"Origin in write ready is closing connection");
         shut_down_copy(copy,false);
     }else{
+        pop3_proxy_state.bytes_transfered += sended;
         // No se avanza el puntero de lectura aca por que ya lo hizo el parser al procesar el comando
     }
 
