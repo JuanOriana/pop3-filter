@@ -1,7 +1,7 @@
 CFLAGS = -Wall -fsanitize=address -g -lpthread -pthread -D_POSIX_C_SOURCE=200112L
 SUBDIRS = utils parsers proxy manager
 # Ver si corresponde compilar con -o3 para optimizar
-COMMON =  ./utils/buffer.o ./utils/logger.o ./utils/selector.o ./utils/stm.o ./proxy/proxypop3nio.o ./proxy/compute_interests.o ./utils/netutils.o ./parsers/hello_parser.o ./parsers/command_parser.o ./parsers/command_response_parser.o ./manager/sap.o ./manager/manager_server.o ./parsers/filter_parser.o
+COMMON =  ./utils/buffer.o ./utils/logger.o ./utils/selector.o ./utils/stm.o ./proxy/proxypop3nio.o ./utils/netutils.o ./parsers/hello_parser.o ./parsers/command_parser.o ./parsers/command_response_parser.o ./manager/sap.o ./manager/manager_server.o ./parsers/filter_parser.o
 
 all: subdirs ${COMMON}
 	@echo "Making proxy";
