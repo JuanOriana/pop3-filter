@@ -634,6 +634,9 @@ static void connection_destroy(connection *connection)
     free(connection->filter_buffer);
     free(connection->filter_parser_buffer->data);
     free(connection->filter_parser_buffer);
+    if (connection->current_command && connection->current_command->data){
+        free(connection->current_command->data);
+    }
     free(connection->current_command);
     free(connection);
 }
