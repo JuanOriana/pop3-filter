@@ -1185,7 +1185,7 @@ static fd_interest origin_compute_interest(struct selector_key *key)
     connection *connection = ATTACHMENT(key);
     struct copy *copy = &connection->copy_origin;
     bool origin_want_write = !connection->is_awaiting_response_from_origin;
-   return compute_interest(key,copy,(origin_want_write && buffer_can_read(copy->write_buffer)), buffer_can_write(copy->read_buffer));  
+    return compute_interest(key,copy,(origin_want_write && buffer_can_read(copy->write_buffer)), buffer_can_write(copy->read_buffer));
 }
 
 
@@ -1391,7 +1391,7 @@ static unsigned send_err_msg(struct selector_key *key) {
     if(connection->error_data.msg_len == 0)
         connection->error_data.msg_len = strlen(connection->error_data.err_msg);
 
-    log(DEBUG,"Sending error to client: %s", connection->error_data.err_msg);
+    log(DEBUG,"Sending error to client at %s: %s", connection->client_addr_humanized, connection->error_data.err_msg);
     char *   msg_ptr = connection->error_data.err_msg + connection->error_data.msg_sent_size;
     ssize_t  size_to_send = connection->error_data.msg_len - connection->error_data.msg_sent_size;
     ssize_t  n = send(connection->client_fd, msg_ptr, size_to_send, MSG_NOSIGNAL);
