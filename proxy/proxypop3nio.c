@@ -513,8 +513,6 @@ static void proxy_time_out(struct selector_key *key){
 
     if(connection!= NULL && difftime(time(NULL),connection->session.last_used) >= pop3_proxy_state.timeout){
         log(DEBUG,"Destroying connection for inactivity");
-        connection->error_data.err_msg = "-ERR Connection timeout.\r\n";
-        send_err_msg(key);
         proxy_done(key);
     }
 }
