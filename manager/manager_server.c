@@ -154,8 +154,6 @@ void get_buff_size_resp(sap_response * new_response, sap_request new_request){
 void set_buff_size_resp(sap_response * new_response, sap_request new_request){
     build_blank_response(new_response,new_request);
     pop3_proxy_state.buff_size = new_request.data.sap_short;
-    // Eliminar las conexiones que quedaron
-    connection_pool_destroy();
 }
 
 void get_timeout_resp(sap_response * new_response, sap_request new_request){
