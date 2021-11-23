@@ -311,7 +311,7 @@ void proxy_passive_accept(struct selector_key *key)
     return;
 passivefinally:
     if (err_msg != NULL) // Nunca deberia ser distinto de null pero se hace el chequeo igual.
-        log(ERROR,"Passive accept fail: %s",err_msg);
+        // log(ERROR,"Passive accept fail: %s",err_msg);
     if (client_socket != -1)
         close(client_socket);
     if (new_connection_instance != NULL){
@@ -513,11 +513,7 @@ static void proxy_time_out(struct selector_key *key){
 
     if(connection!= NULL && difftime(time(NULL),connection->session.last_used) >= pop3_proxy_state.timeout){
         log(DEBUG,"Destroying connection for inactivity");
-        close(connection->client_fd);
-        close(connection->origin_fd);
-        selector_unregister_fd(key->s,connection->origin_fd);
-        selector_unregister_fd(key->s,connection->client_fd);
-        
+        proxy_done(key);
     }
 }
 
@@ -634,9 +630,9 @@ static void connection_destroy(connection *connection)
     free(connection->filter_buffer);
     free(connection->filter_parser_buffer->data);
     free(connection->filter_parser_buffer);
-    if (connection->current_command && connection->current_command->data){
-        free(connection->current_command->data);
-    }
+    // if (connection->current_command && connection->current_command->data){
+    //     free(connection->current_command->data);
+    // }
     free(connection->current_command);
     free(connection);
 }
