@@ -9,7 +9,7 @@
 
 #define MAX_MSG_SIZE 512
 
-static const char * crlfMsg = "\r\n.\r\n";
+static const char * crlf_msg = "\r\n.\r\n";
 
 
 void filter_parser_init(filter_parser * parser){
@@ -43,31 +43,31 @@ filter_parser_state filter_parser_feed(filter_parser * parser, const uint8_t c, 
              }else{
                  buffer_write(dest,c);
              }
-            if(c == crlfMsg[1]){
+            if(c == crlf_msg[1]){
                 parser->state = FILTER_MSG;
             }
             break;
         case FILTER_MSG:
             if(!parse)
                 buffer_write(dest, c);
-            if(c == crlfMsg[2] && parser->line_size == 0) {
+            if(c == crlf_msg[2] && parser->line_size == 0) {
                 parser->state = FILTER_DOT;
                 parser->crl_state = 3;
-            } else if(c == crlfMsg[0]){ 
+            } else if(c == crlf_msg[0]){ 
                 parser->crl_state = 1;
-            } else if(c == crlfMsg[1]) {
+            } else if(c == crlf_msg[1]) {
                 if(parser->crl_state == 1) {
                     parser->line_size = -1;
                     parser->crl_state = 0;
                     if(parse) {
-                        buffer_write(dest, crlfMsg[0]);
-                        buffer_write(dest, crlfMsg[1]);
+                        buffer_write(dest, crlf_msg[0]);
+                        buffer_write(dest, crlf_msg[1]);
                     }
                 } else if(!parse) {
                     parser->line_size = -1;
                     parser->crl_state = 0;
-                    buffer_write(dest, crlfMsg[0]);
-                    buffer_write(dest, crlfMsg[1]);
+                    buffer_write(dest, crlf_msg[0]);
+                    buffer_write(dest, crlf_msg[1]);
                 } else
                     parser->state = FILTER_ERROR;
             } else if(parse)
@@ -76,10 +76,10 @@ filter_parser_state filter_parser_feed(filter_parser * parser, const uint8_t c, 
 
         case FILTER_DOT:
             if(parse) {
-                if(c == crlfMsg[3]) {
+                if(c == crlf_msg[3]) {
                     parser->state = FILTER_CRLF;
                     parser->crl_state = 4;
-                } else if(c == crlfMsg[2]) {
+                } else if(c == crlf_msg[2]) {
                     buffer_write(dest, c);
                     parser->state = FILTER_MSG;
                     parser->crl_state = 0;
@@ -88,18 +88,18 @@ filter_parser_state filter_parser_feed(filter_parser * parser, const uint8_t c, 
             } else {
                 parser->state = FILTER_MSG;
                 parser->crl_state = 0;
-                if(c == crlfMsg[0]) {
+                if(c == crlf_msg[0]) {
                     parser->crl_state = 1;
-                } else if(c == crlfMsg[1]) {
+                } else if(c == crlf_msg[1]) {
                     parser->state = FILTER_ERROR;
                 }
-                buffer_write(dest, crlfMsg[2]);
+                buffer_write(dest, crlf_msg[2]);
                 buffer_write(dest, c);
             }
             break;
 
         case FILTER_CRLF:
-            if(c == crlfMsg[4])
+            if(c == crlf_msg[4])
                 parser->state = FILTER_DONE;
             else
                 parser->state = FILTER_ERROR;

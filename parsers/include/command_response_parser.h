@@ -20,8 +20,8 @@ typedef enum command_response_state {
 } command_response_state;
 
 typedef struct command_response_parser {
-    size_t                  line_size;
-    size_t                  crlf_state; //0 NONE, 1 \r READ, 2 \n READ. 3 \. READ, 4 \r READ, 5 \n READ
+    int                     line_size;
+    int                     crlf_state; //0 NONE, 1 \r READ, 2 \n READ. 3 \. READ, 4 \r READ, 5 \n READ
     bool                    is_starting_body;       // Avisa cuando comienza la primera linea del cuerpo
     bool                    is_pipelining_possible; // Marca si una linea ya no coincide con el string PIPELINING
     bool                    includes_pipelining;    // Marca si en ALGUNA linea se vio PIPELINING

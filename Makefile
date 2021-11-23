@@ -1,28 +1,15 @@
-CFLAGS = -Wall -fsanitize=address -g -lpthread -pthread -D_POSIX_C_SOURCE=200112L
-SUBDIRS = utils parsers proxy manager
-# Ver si corresponde compilar con -o3 para optimizar
-COMMON =  ./utils/buffer.o ./utils/logger.o ./utils/selector.o ./utils/stm.o ./proxy/proxypop3nio.o ./utils/netutils.o ./parsers/hello_parser.o ./parsers/command_parser.o ./parsers/command_response_parser.o ./manager/sap.o ./manager/manager_server.o ./parsers/filter_parser.o
+CFLAGS = -g --std=c11 -fsanitize=address  -Wall -Wextra -Werror -Wno-unused-parameter -Wno-implicit-fallthrough -D_POSIX_C_SOURCE=200809L -pthread
+OBJECTS =  ./utils/buffer.o ./utils/logger.o ./utils/selector.o ./utils/stm.o ./proxy/proxypop3nio.o ./utils/netutils.o ./parsers/hello_parser.o ./parsers/command_parser.o ./parsers/command_response_parser.o ./manager/sap.o ./manager/manager_server.o ./parsers/filter_parser.o
 
-all: subdirs ${COMMON}
-	@echo "Making proxy";
-	$(CC) $(CFLAGS) -o pop3filter main.c args.c $(COMMON)
-	@echo "Making client";
-	$(CC) $(CFLAGS) -o ./manager_client/client ./manager_client/manager_client.c args.c $(COMMON)
-
-subdirs: ${COMMON}
-	$(CC) $(CFLAGS) -I./include -c args.c
-	@for subdir in $(SUBDIRS); do \
-    	echo "Making all in $$subdir"; \
-        cd $$subdir && $(MAKE) all && cd ..; \
-    done
+all: ${OBJECTS}
+	@echo "\n+-+	Making proxy	+-+\n";
+	$(CC) $(CFLAGS) -o pop3filter main.c args.c $(OBJECTS)
+	@echo "\n+-+	Making client	+-+\n";
+	$(CC) $(CFLAGS) -o ./manager_client/client ./manager_client/manager_client.c args.c $(OBJECTS)
 
 
-clean:	
-	@for subdir in $(SUBDIRS); do \
-		echo "Cleaning all in $$subdir"; \
-		cd $$subdir && $(MAKE) clean && cd ..; \
-	done
-	rm -r -f *.o  main report.tasks;
+clean:
+	rm -r -f *.o ./parsers/*.o ./utils/*.o ./proxy/*.o ./manager/*.o ./manager_client/*.o pop3filter ./manager_client/client $(COMMON);
 
 
 .PHONY =all clean subdirs

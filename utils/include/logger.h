@@ -27,5 +27,4 @@ char * levelDescription(LOG_LEVEL level);
 	fprintf(exit, fmt, ##__VA_ARGS__); \
 	fprintf(exit,"\n"); }\
 	if ( level==FATAL) exit(1);}
-	
 #endif

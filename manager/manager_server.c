@@ -10,6 +10,7 @@
 #include "../include/args.h"
 #include "../utils/include/logger.h"
 #include "../utils/include/selector.h"
+#include "../proxy/include/proxypop3nio.h"
 
 #define SERVER_VERSION SAP_V_1_0_0
 #define MAX_LINE 1024
@@ -79,7 +80,7 @@ void manager_passive_accept(struct selector_key *key)
     else if (request.v_type > SERVER_VERSION){
         build_blank_response_with_status(&response,request,SC_VERSION_UNKNOWN);
     }
-    else if (request.op_code > SAP_OP_SIZE){
+    else if (request.op_code >= SAP_OP_SIZE){
         build_blank_response_with_status(&response,request,SC_COMMAND_UNSUPPORTED);
     }
     else{

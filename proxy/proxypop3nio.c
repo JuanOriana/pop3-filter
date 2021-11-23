@@ -311,7 +311,7 @@ void proxy_passive_accept(struct selector_key *key)
     return;
 passivefinally:
     if (err_msg != NULL) // Nunca deberia ser distinto de null pero se hace el chequeo igual.
-        log(ERROR,"Passive accept fail: %s",err_msg);
+        // log(ERROR,"Passive accept fail: %s",err_msg);
     if (client_socket != -1)
         close(client_socket);
     if (new_connection_instance != NULL){
@@ -513,11 +513,7 @@ static void proxy_time_out(struct selector_key *key){
 
     if(connection!= NULL && difftime(time(NULL),connection->session.last_used) >= pop3_proxy_state.timeout){
         log(DEBUG,"Destroying connection for inactivity");
-        close(connection->client_fd);
-        close(connection->origin_fd);
-        selector_unregister_fd(key->s,connection->origin_fd);
-        selector_unregister_fd(key->s,connection->client_fd);
-        
+        proxy_done(key);
     }
 }
 
@@ -675,6 +671,7 @@ void connection_pool_destroy()
         next = curr->next;
         connection_destroy(curr);
     }
+    connection_pool = NULL;
 }
 
 /////////////////// FUNCIONES DEL ESTADO HELLO ////////////////////////////////////////////
@@ -1040,9 +1037,9 @@ static void analize_response(connection * connection) {
                 username = get_user(*current);
                 username_len = strlen(username) + 1;  //checkear size mayor 40
                 memcpy(connection->session.name, username, username_len);
-                log(DEBUG,"Attempting to log user: %s", connection->session.name);
+                log(DEBUG,"Attempting to log user: %s from %s", connection->session.name,connection->client_addr_humanized);
             } else if(current->type == CMD_PASS && current->indicator) {
-                log(DEBUG,"Logged user: %s", connection->session.name);
+                log(DEBUG,"Logged user: %s from %s", connection->session.name, connection->client_addr_humanized);
                 connection->session.is_logged = true;
             } else if(current->type == CMD_APOP && current->indicator) {
                 username = get_user(*current);
@@ -1183,7 +1180,7 @@ static fd_interest origin_compute_interest(struct selector_key *key)
     connection *connection = ATTACHMENT(key);
     struct copy *copy = &connection->copy_origin;
     bool origin_want_write = !connection->is_awaiting_response_from_origin;
-   return compute_interest(key,copy,(origin_want_write && buffer_can_read(copy->write_buffer)), buffer_can_write(copy->read_buffer));  
+    return compute_interest(key,copy,(origin_want_write && buffer_can_read(copy->write_buffer)), buffer_can_write(copy->read_buffer));
 }
 
 
@@ -1389,7 +1386,7 @@ static unsigned send_err_msg(struct selector_key *key) {
     if(connection->error_data.msg_len == 0)
         connection->error_data.msg_len = strlen(connection->error_data.err_msg);
 
-    log(DEBUG,"Sending error to client: %s", connection->error_data.err_msg);
+    log(DEBUG,"Sending error to client at %s: %s", connection->client_addr_humanized, connection->error_data.err_msg);
     char *   msg_ptr = connection->error_data.err_msg + connection->error_data.msg_sent_size;
     ssize_t  size_to_send = connection->error_data.msg_len - connection->error_data.msg_sent_size;
     ssize_t  n = send(connection->client_fd, msg_ptr, size_to_send, MSG_NOSIGNAL);
