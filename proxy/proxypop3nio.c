@@ -1039,9 +1039,9 @@ static void analize_response(connection * connection) {
                 username = get_user(*current);
                 username_len = strlen(username) + 1;  //checkear size mayor 40
                 memcpy(connection->session.name, username, username_len);
-                log(DEBUG,"Attempting to log user: %s", connection->session.name);
+                log(DEBUG,"Attempting to log user: %s from %s", connection->session.name,connection->client_addr_humanized);
             } else if(current->type == CMD_PASS && current->indicator) {
-                log(DEBUG,"Logged user: %s", connection->session.name);
+                log(DEBUG,"Logged user: %s from %s", connection->session.name, connection->client_addr_humanized);
                 connection->session.is_logged = true;
             } else if(current->type == CMD_APOP && current->indicator) {
                 username = get_user(*current);
