@@ -10,6 +10,7 @@
 #include "../include/args.h"
 #include "../utils/include/logger.h"
 #include "../utils/include/selector.h"
+#include "../proxy/include/proxypop3nio.h"
 
 #define SERVER_VERSION SAP_V_1_0_0
 #define MAX_LINE 1024
@@ -153,6 +154,8 @@ void get_buff_size_resp(sap_response * new_response, sap_request new_request){
 void set_buff_size_resp(sap_response * new_response, sap_request new_request){
     build_blank_response(new_response,new_request);
     pop3_proxy_state.buff_size = new_request.data.sap_short;
+    // Eliminar las conexiones que quedaron
+    connection_pool_destroy();
 }
 
 void get_timeout_resp(sap_response * new_response, sap_request new_request){
