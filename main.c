@@ -15,7 +15,7 @@
 #include <sys/signal.h>
 #include "proxy/include/proxypop3nio.h"
 
-#define MAX_PENDING_CONNECTIONS 20
+#define MAX_PENDING_CONNECTIONS 250
 #define SELECTOR_SIZE 1024
 
 extern struct pop3_proxy_state pop3_proxy_state;
